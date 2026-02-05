@@ -1,3 +1,15 @@
+# netservice-01w-Pi1541
+
+Unofficial fork/derivative of Pi1541 (Stephen White) and pottendo-Pi1541. Pi Zero W (01W) only variant that emphasizes network-loaded files via a web-based frontend.
+
+> WORK IN PROGRESS: This fork is actively being developed. Starting point is pottendo-Pi1541 as a baseline, particularly the Circle integration and Stephen White's Pi1541 v1.25F legacy codebase as integrated by pottendo-Pi1541. The aim is to introduce a simple network service mode for Pi Zero W (01W) and potentially scale it over time.
+
+This project is **not** affiliated with Stephen White (Pi1541) or pottendo.
+
+See `UPSTREAM.md` for the pinned upstream base and `CREDITS.md` for attributions.
+
+---
+
 # Pi1541 - Circle ported, ready for new features
 
 This is an optional port of Pi1541 (V1.25F) to the current Circle bare metal library (as of November 2025, Step 50.0.1).
