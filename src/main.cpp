@@ -156,6 +156,7 @@ u32 clockCycles1MHz;
 #endif
 
 #if defined(__CIRCLE__)
+// Circle has its own spinlock primitive; don't mix it with the legacy SpinLock.
 CSpinLock core0RefreshingScreen;
 #elif not defined(EXPERIMENTALZERO)
 SpinLock core0RefreshingScreen;

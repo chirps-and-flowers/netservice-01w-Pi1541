@@ -1,0 +1,3 @@
+toolchain_version=14.3.rel1
+toolchain_tarball_sha256=8f6903f8ceb084d9227b9ef991490413014d991874a1e34074443c2a72b14dbd
+toolchain_human=arm-none-eabi-gcc (Arm GNU Toolchain 14.3.Rel1 (Build arm-14.174)) 14.3.1 20250623

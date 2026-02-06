@@ -5,14 +5,14 @@ set -euo pipefail
 # Cached, lockfile-verified checkout of circle-stdlib (+ submodules) into build/staging.
 #
 # Rationale:
-# - We do not vendor Circle as a git submodule (keeps the repo small/clean).
-# - We still want deterministic builds, so we pin superproject + submodule SHAs.
+# - Deterministic builds for a cleaner debug path.
+# - Repo stays cleanish (no Circle submodule in the main tree).
 #
 # Stdout: stage path (for scripts)
 # Stderr: progress/errors
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-LOCK="${ROOT}/vendors/circle-stdlib/upstream.lock"
+LOCK="${ROOT}/vendors/circle-stdlib.lock"
 SUBLOCK="${ROOT}/vendors/circle-stdlib/submodules.lock"
 
 BUILD_DIR="${ROOT}/build"
@@ -150,4 +150,3 @@ else
 fi
 
 printf '%s\n' "$STAGE"
-

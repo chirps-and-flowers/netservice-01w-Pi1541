@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build.sh - Pi Zero (01W) build entrypoint for this fork.
+# build.sh - Pi Zero 1 W (01W) build entrypoint for this fork.
 #
 # Default: build both kernels
 #   - Legacy emulator kernel (RASPPI=0)
 #   - Circle service kernel (Circle RASPPI=1 / Pi1-class, runs on Pi Zero)
 #
-# This script is intentionally Pi Zero only. Keep it boring and reproducible.
+# This script is intentionally Pi Zero 1 W only. Keep it minimal and deterministic for simpler debugging.
 #
 # NOTE: "RASPPI" means different things in different parts of this codebase:
 # - Pi1541 legacy build: RASPPI=0 selects the Pi Zero / ARMv6 (ARM1176) path.
@@ -88,7 +88,7 @@ gcc_path="$(command -v arm-none-eabi-gcc)"
 expected_gcc="${TOOLCHAIN_BIN}/arm-none-eabi-gcc"
 [[ "$gcc_path" == "$expected_gcc" ]] || die "arm-none-eabi-gcc is not the pinned toolchain: got ${gcc_path}, expected ${expected_gcc}"
 
-expected_gcc_version="$(lock_get toolchain "${ROOT}/vendors/circle-stdlib/upstream.lock")"
+expected_gcc_version="$(lock_get toolchain_human "${ROOT}/vendors/toolchain.lock")"
 actual_gcc_version="$(arm-none-eabi-gcc --version | head -n1)"
 [[ "$actual_gcc_version" == "$expected_gcc_version" ]] || die "toolchain version mismatch: got '${actual_gcc_version}', expected '${expected_gcc_version}'"
 

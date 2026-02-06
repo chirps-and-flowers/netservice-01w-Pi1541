@@ -5,12 +5,22 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CACHE_DIR="${ROOT}/build/cache"
 TOOLCHAIN_DIR="${CACHE_DIR}/toolchains"
 
+lock_get() {
+  local key="$1"
+  local file="$2"
+  local v
+  v="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2-)"
+  [ -n "${v:-}" ] || { echo "lockfile missing key: ${key} (${file})" >&2; exit 1; }
+  printf '%s\n' "$v"
+}
+
 # ARM32 toolchain (required for Pi Zero/legacy)
-TOOLCHAIN_VERSION="14.2.1-1.1"
-TOOLCHAIN_TARBALL_SHA256="ed8c7d207a85d00da22b90cf80ab3b0b2c7600509afadf6b7149644e9d4790a6"
-TOOLCHAIN_BASE="xpack-arm-none-eabi-gcc-${TOOLCHAIN_VERSION}"
-TOOLCHAIN_TARBALL="${TOOLCHAIN_BASE}-linux-x64.tar.gz"
-TOOLCHAIN_URL="https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${TOOLCHAIN_VERSION}/${TOOLCHAIN_TARBALL}"
+LOCK_FILE="${ROOT}/vendors/toolchain.lock"
+TOOLCHAIN_VERSION="$(lock_get toolchain_version "${LOCK_FILE}")"
+TOOLCHAIN_TARBALL_SHA256="$(lock_get toolchain_tarball_sha256 "${LOCK_FILE}")"
+TOOLCHAIN_BASE="arm-gnu-toolchain-${TOOLCHAIN_VERSION}-x86_64-arm-none-eabi"
+TOOLCHAIN_TARBALL="${TOOLCHAIN_BASE}.tar.xz"
+TOOLCHAIN_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${TOOLCHAIN_VERSION}/binrel/${TOOLCHAIN_TARBALL}"
 TOOLCHAIN_BIN="${TOOLCHAIN_DIR}/${TOOLCHAIN_BASE}/bin"
 
 export TOOLCHAIN_VERSION TOOLCHAIN_TARBALL_SHA256 TOOLCHAIN_URL TOOLCHAIN_BIN
