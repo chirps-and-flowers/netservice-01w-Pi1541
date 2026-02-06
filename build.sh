@@ -96,24 +96,12 @@ echo "Toolchain: ${actual_gcc_version}" >&2
 
 # Circle service kernel --------------------------------------------------------
 build_service() {
-  need patch
-
   local stage
   stage="$("${ROOT}/tools/bootstrap-circle-stdlib.sh" "--${STAGE_MODE}")"
   [[ -d "$stage" ]] || die "circle-stdlib staging missing: $stage"
 
-  # Circle's newlib target is "arm-none-circle", but we use an "arm-none-eabi-"
-  # toolchain. Provide the expected binutils names via PATH-local aliases.
-  local alias_dir="${BUILD_DIR}/repro/bin"
-  mkdir -p "$alias_dir"
-  for tool in ar nm objcopy objdump ranlib readelf size strip; do
-    ln -sf "$(command -v arm-none-eabi-${tool})" "${alias_dir}/arm-none-circle-${tool}"
-  done
-  export PATH="${alias_dir}:$PATH"
-
-  echo "circle-stdlib: applying pottendo baseline patches" >&2
-  ( cd "$stage/libs/circle" && patch -p1 < "${ROOT}/src/Circle/patch-circle-V50.0.1.diff" ) >/dev/null
-  ( cd "$stage/libs/circle/addon/wlan/hostap" && patch -p1 < "${ROOT}/src/Circle/patch-circle-V50.0.1-wpafix.diff" ) >/dev/null
+  echo "circle-stdlib: applying vendor patches (lockfile pinned)" >&2
+  "${ROOT}/tools/apply-vendor-patches.sh" "$stage" >/dev/null
 
   echo "circle-stdlib: configure (-r 1, arm-none-eabi-)" >&2
   ( cd "$stage" && ./configure -r 1 --prefix arm-none-eabi- ) >/dev/null

@@ -1,0 +1,16 @@
+# Patch manifest for circle-stdlib staging.
+#
+# Format:
+#   <target_path> <base_sha> <patch_file> <patch_sha256>
+#
+# Rules:
+# - base_sha must match the checked-out commit for the target_path repo.
+# - patch_sha256 is the sha256 of patch_file (integrity + audit).
+# - Patches must apply cleanly (fail closed).
+#
+# circle-stdlib build fixes (this fork)
+. 83efe0b460555910878476fdcdbccbc185c92408 vendors/circle-stdlib/patches/0001-configure-fix-target-tools.diff 67c506d03b81fe937a08c82eac59ef15d0f230292bc3b48f48e7a19c525fd1a1
+
+# pottendo baseline Circle patches (as shipped upstream)
+libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 src/Circle/patch-circle-V50.0.1.diff 7d1dcc90b05ee43d3d23cad71091473de596f6dcc62a86e438eba536c5c3440d
+libs/circle/addon/wlan/hostap 237e65ecf72e531c7744cacbc444bd289c316712 src/Circle/patch-circle-V50.0.1-wpafix.diff bee51122f624e7b3488cff2c4c592f4e85bb07d8f4221b42d085774cb2535066

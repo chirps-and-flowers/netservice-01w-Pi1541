@@ -1,0 +1,23 @@
+diff --git a/configure b/configure
+index 78c0e87..1365657 100755
+--- a/configure
++++ b/configure
+@@ -192,11 +192,14 @@ export \
+     CXX_FOR_TARGET=${TOOLPREFIX}g++ \
+     GCC_FOR_TARGET=${TOOLPREFIX}gcc \
+     AR_FOR_TARGET=${TOOLPREFIX}gcc-ar \
+-    AS_FOR_TARGET=${TOOLPREFIX}gcc-as \
+-    LD_FOR_TARGET=${TOOLPREFIX}gcc-ld \
++    AS_FOR_TARGET=${TOOLPREFIX}as \
++    LD_FOR_TARGET=${TOOLPREFIX}ld \
++    NM_FOR_TARGET=${TOOLPREFIX}nm \
+     RANLIB_FOR_TARGET=${TOOLPREFIX}gcc-ranlib \
+-    OBJCOPY_FOR_TARGET=${TOOLPREFIX}gcc-objcopy \
+-    OBJDUMP_FOR_TARGET=${TOOLPREFIX}gcc-objdump
++    OBJCOPY_FOR_TARGET=${TOOLPREFIX}objcopy \
++    OBJDUMP_FOR_TARGET=${TOOLPREFIX}objdump \
++    READELF_FOR_TARGET=${TOOLPREFIX}readelf \
++    STRIP_FOR_TARGET=${TOOLPREFIX}strip
+ 
+ if [ $DEBUG -eq 1 ]
+ then
