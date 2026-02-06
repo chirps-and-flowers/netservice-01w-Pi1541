@@ -5,9 +5,14 @@ set -euo pipefail
 #
 # Default: build both kernels
 #   - Legacy emulator kernel (RASPPI=0)
-#   - Circle service kernel (RASPPI=1 / Pi1-class, runs on Pi Zero)
+#   - Circle service kernel (Circle RASPPI=1 / Pi1-class, runs on Pi Zero)
 #
 # This script is intentionally Pi Zero only. Keep it boring and reproducible.
+#
+# NOTE: "RASPPI" means different things in different parts of this codebase:
+# - Pi1541 legacy build: RASPPI=0 selects the Pi Zero / ARMv6 (ARM1176) path.
+# - Circle build:        -r 1 / RASPPI=1 targets the Pi 1 class (includes Pi Zero).
+#                        Multicore exists only when Circle defines ARM_ALLOW_MULTI_CORE.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
