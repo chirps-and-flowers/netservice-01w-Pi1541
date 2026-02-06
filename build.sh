@@ -117,8 +117,10 @@ build_service() {
   make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" -j"$(jobs)" >/dev/null
 
   [[ -f "${ROOT}/src/kernel.img" ]] || die "service kernel missing: ${ROOT}/src/kernel.img"
-  cp -f "${ROOT}/src/kernel.img" "${OUT_DIR}/kernel_srv.img"
-  echo "OK: ${OUT_DIR}/kernel_srv.img" >&2
+  cp -f "${ROOT}/src/kernel.img" "${OUT_DIR}/kernel_service.img"
+  # Clean up old artifact name(s) from earlier iterations.
+  rm -f "${OUT_DIR}/kernel_srv.img"
+  echo "OK: ${OUT_DIR}/kernel_service.img" >&2
 }
 
 # Legacy emulator kernel -------------------------------------------------------
@@ -127,8 +129,10 @@ build_pi1541() {
   make RASPPI=0 clean >/dev/null
   make legacy RASPPI=0 -j"$(jobs)" >/dev/null
   [[ -f "${ROOT}/kernel.img" ]] || die "legacy kernel missing: ${ROOT}/kernel.img"
-  cp -f "${ROOT}/kernel.img" "${OUT_DIR}/kernel_emu.img"
-  echo "OK: ${OUT_DIR}/kernel_emu.img" >&2
+  cp -f "${ROOT}/kernel.img" "${OUT_DIR}/kernel_pi1541.img"
+  # Clean up old artifact name(s) from earlier iterations.
+  rm -f "${OUT_DIR}/kernel_emu.img"
+  echo "OK: ${OUT_DIR}/kernel_pi1541.img" >&2
 }
 
 case "$MODE" in
@@ -148,4 +152,7 @@ case "$MODE" in
 esac
 
 echo "Artifacts in ${OUT_DIR}:" >&2
-ls -lh "${OUT_DIR}" >&2
+for f in kernel_pi1541.img kernel_service.img; do
+  [[ -f "${OUT_DIR}/${f}" ]] || continue
+  ls -lh "${OUT_DIR}/${f}" >&2
+done
