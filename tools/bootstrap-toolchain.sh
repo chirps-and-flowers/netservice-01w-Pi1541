@@ -26,7 +26,7 @@ TOOLCHAIN_BIN="${TOOLCHAIN_DIR}/${TOOLCHAIN_BASE}/bin"
 export TOOLCHAIN_VERSION TOOLCHAIN_TARBALL_SHA256 TOOLCHAIN_URL TOOLCHAIN_BIN
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 1; }; }
-log() { [ "${PRINT_ENV:-0}" -eq 1 ] && return 0; echo "$@" >&2; }
+log() { echo "$@" >&2; }
 
 fetch() {
   local url="$1"
@@ -44,6 +44,10 @@ fetch() {
 install_arm32() {
   mkdir -p "$TOOLCHAIN_DIR"
   local tarball_path="${TOOLCHAIN_DIR}/${TOOLCHAIN_TARBALL}"
+  if [ "${CLEAN:-0}" -eq 1 ]; then
+    log "Cleaning ARM32 toolchain ${TOOLCHAIN_VERSION}..."
+    rm -rf "${TOOLCHAIN_DIR:?}/${TOOLCHAIN_BASE}" "${tarball_path}" || true
+  fi
   if [ ! -x "${TOOLCHAIN_BIN}/arm-none-eabi-gcc" ]; then
     log "Downloading ARM32 toolchain ${TOOLCHAIN_VERSION}..."
     fetch "$TOOLCHAIN_URL" "$tarball_path"
@@ -55,9 +59,11 @@ install_arm32() {
 
 ARM32=1
 PRINT_ENV=0
+CLEAN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --arm32) ARM32=1; shift ;;
+    --clean) CLEAN=1; shift ;;
     --print-env) PRINT_ENV=1; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac

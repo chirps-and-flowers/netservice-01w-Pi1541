@@ -21,12 +21,13 @@ OUT_DIR="${BUILD_DIR}/out"
 
 MODE="both"          # both | pi1541 | service
 STAGE_MODE="cached"  # cached | clean
+TOOLCHAIN_CLEAN=0
 ALLOW_DIRTY=0
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./build.sh [--pi1541] [--service] [--clean] [--cached] [--allow-dirty]
+  ./build.sh [--pi1541] [--service] [--clean|--cached] [--clean-circle] [--clean-toolchain] [--allow-dirty]
 
 Modes:
   (default)   Build both legacy (emu) + Circle (service)
@@ -34,8 +35,10 @@ Modes:
   --service   Build Circle (service) only
 
 Staging:
-  --cached    Reuse build/staging if it matches lockfiles (default)
-  --clean     Force a clean checkout of circle-stdlib staging
+  --cached           Reuse build/staging if it matches lockfiles (default)
+  --clean            Clean Circle staging + toolchain cache (forces toolchain re-download)
+  --clean-circle     Clean Circle staging only
+  --clean-toolchain  Clean toolchain cache only (forces toolchain re-download)
 
 Safety:
   --allow-dirty   Allow building with local tracked changes (developer only)
@@ -61,7 +64,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --pi1541) MODE="pi1541"; shift ;;
     --service) MODE="service"; shift ;;
-    --clean) STAGE_MODE="clean"; shift ;;
+    --clean) STAGE_MODE="clean"; TOOLCHAIN_CLEAN=1; shift ;;
+    --clean-circle) STAGE_MODE="clean"; shift ;;
+    --clean-toolchain) TOOLCHAIN_CLEAN=1; shift ;;
     --cached) STAGE_MODE="cached"; shift ;;
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -80,7 +85,11 @@ fi
 mkdir -p "$OUT_DIR"
 
 # Toolchain (pinned) -----------------------------------------------------------
-eval "$("${ROOT}/tools/bootstrap-toolchain.sh" --arm32 --print-env)"
+if [[ "$TOOLCHAIN_CLEAN" -eq 1 ]]; then
+  eval "$("${ROOT}/tools/bootstrap-toolchain.sh" --arm32 --clean --print-env)"
+else
+  eval "$("${ROOT}/tools/bootstrap-toolchain.sh" --arm32 --print-env)"
+fi
 
 # Fail closed: ensure we are using the pinned toolchain binary, not whatever is
 # present on the developer machine.
