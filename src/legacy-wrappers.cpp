@@ -16,31 +16,54 @@
 //
 
 #include <circle/startup.h>
+#include <circle/bcmrandom.h>
 #include "circle-kernel.h"
 #include "rpi-gpio.h"
 #include <stdint.h>
+#include <errno.h>
 
 u32 _ctb;
 
 // newlib's getentropy() expects a platform hook named _getentropy.
 // Circle/newlib does not currently provide one, but some consumers (e.g. WPA)
-// rely on it existing. Provide a best-effort entropy source.
+// rely on it existing. Use the BCM283x hardware RNG.
 extern "C" int _getentropy(void *buf, size_t buflen)
 {
+	if (buflen == 0)
+	{
+		return 0;
+	}
+
+	if (buf == nullptr)
+	{
+		errno = EFAULT;
+		return -1;
+	}
+
 	u8 *p = static_cast<u8 *>(buf);
 
-	// Seed from timer ticks + pointer jitter; best-effort only.
-	u32 x = CTimer::GetClockTicks();
-	x ^= static_cast<u32>(reinterpret_cast<uintptr_t>(buf));
-	x ^= static_cast<u32>(buflen);
+	// Constructing the RNG performs one-time peripheral init (guarded by a spinlock).
+	static CBcmRandomNumberGenerator s_rng;
 
-	for (size_t i = 0; i < buflen; ++i)
+	// Fill in 32-bit chunks then tail bytes.
+	while (buflen >= 4)
 	{
-		// xorshift32
-		x ^= x << 13;
-		x ^= x >> 17;
-		x ^= x << 5;
-		p[i] = static_cast<u8>(x);
+		u32 n = s_rng.GetNumber();
+		p[0] = static_cast<u8>(n);
+		p[1] = static_cast<u8>(n >> 8);
+		p[2] = static_cast<u8>(n >> 16);
+		p[3] = static_cast<u8>(n >> 24);
+		p += 4;
+		buflen -= 4;
+	}
+
+	if (buflen)
+	{
+		u32 n = s_rng.GetNumber();
+		for (size_t i = 0; i < buflen; ++i)
+		{
+			p[i] = static_cast<u8>(n >> (i * 8));
+		}
 	}
 
 	return 0;
