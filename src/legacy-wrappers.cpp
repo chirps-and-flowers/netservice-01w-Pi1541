@@ -18,8 +18,33 @@
 #include <circle/startup.h>
 #include "circle-kernel.h"
 #include "rpi-gpio.h"
+#include <stdint.h>
 
 u32 _ctb;
+
+// newlib's getentropy() expects a platform hook named _getentropy.
+// Circle/newlib does not currently provide one, but some consumers (e.g. WPA)
+// rely on it existing. Provide a best-effort entropy source.
+extern "C" int _getentropy(void *buf, size_t buflen)
+{
+	u8 *p = static_cast<u8 *>(buf);
+
+	// Seed from timer ticks + pointer jitter; best-effort only.
+	u32 x = CTimer::GetClockTicks();
+	x ^= static_cast<u32>(reinterpret_cast<uintptr_t>(buf));
+	x ^= static_cast<u32>(buflen);
+
+	for (size_t i = 0; i < buflen; ++i)
+	{
+		// xorshift32
+		x ^= x << 13;
+		x ^= x >> 17;
+		x ^= x << 5;
+		p[i] = static_cast<u8>(x);
+	}
+
+	return 0;
+}
 
 /* wrappers */
 void RPiConsole_put_pixel(uint32_t x, uint32_t y, uint16_t c) {	Kernel.set_pixel(x, y, c); }

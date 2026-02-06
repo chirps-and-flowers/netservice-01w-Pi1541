@@ -578,6 +578,7 @@ char *CKernel::get_version(void)
 	return pPi1541Version;
 }
 
+#if RASPPI >= 2
 void Pi1541Cores::Run(unsigned int core)			/* Virtual method */
 {
 	int i = 0;
@@ -656,4 +657,4 @@ void Pi1541Cores::Run(unsigned int core)			/* Virtual method */
 	Kernel.log("%s: halting core %d", __FUNCTION__, core);
 	halt();	// whenever a core function returns, we halt the core.
 }
-
+#endif

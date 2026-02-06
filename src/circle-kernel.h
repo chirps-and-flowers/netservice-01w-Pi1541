@@ -17,7 +17,10 @@
 #ifndef _circle_kernel_h
 #define _circle_kernel_h
 
+#include <circle/memory.h>
+#if RASPPI >= 2
 #include <circle/multicore.h>
+#endif
 #include <circle/actled.h>
 #include <circle/koptions.h>
 #include <circle/devicenameservice.h>
@@ -54,6 +57,7 @@ enum TShutdownMode
 	ShutdownReboot
 };
 
+#if RASPPI >= 2
 class Pi1541Cores : public CMultiCoreSupport {
 public:
 	Pi1541Cores(CMemorySystem *pMemorySystem) : CMultiCoreSupport(pMemorySystem) {}
@@ -61,6 +65,14 @@ public:
 
 	virtual void Run(unsigned int); 
 };
+#else
+// Pi Zero / Pi 1 class (single core): no multicore support.
+class Pi1541Cores {
+public:
+	explicit Pi1541Cores(CMemorySystem *) {}
+	void Initialize(void) {}
+};
+#endif
 
 class CKernel
 {

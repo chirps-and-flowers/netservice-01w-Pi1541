@@ -1,0 +1,6 @@
+3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 libs/circle
+7f07a129e8d77f4984fff8e623fd5be18ff42e74 libs/circle/addon/lvgl/lvgl
+237e65ecf72e531c7744cacbc444bd289c316712 libs/circle/addon/wlan/hostap
+523c2e0f7873d0b4e37cb4f498b02234536b95cd libs/circle-newlib
+2fc8413bfcb51354c8e679141b17b3f1a5942561 libs/mbedtls
+

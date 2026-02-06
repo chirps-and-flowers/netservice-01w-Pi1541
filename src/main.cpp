@@ -21,6 +21,7 @@
 #include "defs.h"
 #if defined(__CIRCLE__) 
 #include "circle-kernel.h"
+#include <circle/spinlock.h>
 #elif defined(__PICO2__)
 // XXX PICO specific includes here
 #include "pico2.h"
@@ -154,7 +155,9 @@ u16 pc;
 u32 clockCycles1MHz;
 #endif
 
-#if not defined(EXPERIMENTALZERO)
+#if defined(__CIRCLE__)
+CSpinLock core0RefreshingScreen;
+#elif not defined(EXPERIMENTALZERO)
 SpinLock core0RefreshingScreen;
 #endif
 unsigned int screenWidth = 1024;
