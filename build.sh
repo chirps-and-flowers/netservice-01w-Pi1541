@@ -44,6 +44,14 @@ EOF
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
+lock_get() {
+  local key="$1"
+  local file="$2"
+  local v
+  v="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2-)"
+  [[ -n "${v:-}" ]] || die "lockfile missing key: ${key} (${file})"
+  printf '%s\n' "$v"
+}
 
 jobs() {
   if command -v nproc >/dev/null 2>&1; then nproc; else getconf _NPROCESSORS_ONLN; fi
@@ -73,7 +81,18 @@ mkdir -p "$OUT_DIR"
 
 # Toolchain (pinned) -----------------------------------------------------------
 eval "$("${ROOT}/tools/bootstrap-toolchain.sh" --arm32 --print-env)"
-echo "Toolchain: $(arm-none-eabi-gcc --version | head -n1)" >&2
+
+# Fail closed: ensure we are using the pinned toolchain binary, not whatever is
+# present on the developer machine.
+gcc_path="$(command -v arm-none-eabi-gcc)"
+expected_gcc="${TOOLCHAIN_BIN}/arm-none-eabi-gcc"
+[[ "$gcc_path" == "$expected_gcc" ]] || die "arm-none-eabi-gcc is not the pinned toolchain: got ${gcc_path}, expected ${expected_gcc}"
+
+expected_gcc_version="$(lock_get toolchain "${ROOT}/vendors/circle-stdlib/upstream.lock")"
+actual_gcc_version="$(arm-none-eabi-gcc --version | head -n1)"
+[[ "$actual_gcc_version" == "$expected_gcc_version" ]] || die "toolchain version mismatch: got '${actual_gcc_version}', expected '${expected_gcc_version}'"
+
+echo "Toolchain: ${actual_gcc_version}" >&2
 
 # Circle service kernel --------------------------------------------------------
 build_service() {
