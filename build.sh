@@ -121,9 +121,23 @@ build_service() {
   # The Circle kernel depends on generated webcontent headers (src/webcontent/*.h).
   make -C "${ROOT}/src/webcontent" all >/dev/null
 
+  # Service kernel links an explicit object list (service/*.o + minimal shared objs),
+  # so Makefile.circle’s default OBJS (which include emulator objects) are overridden here.
+  # NETSERVICE_TARGET_SERVICE selects the service kernel headers via src/circle-types.h.
+  local service_circle_objs
+  local service_common_objs
+  service_circle_objs="service/main.o service/kernel.o"
+  service_common_objs="service/service.o service/shim.o options.o ScreenLCD.o SSD1306.o xga_font_data.o"
+
   echo "service kernel: building (Circle, Pi Zero)" >&2
-  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" clean >/dev/null
-  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" -j"$(jobs)" >/dev/null
+  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" \
+    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1" \
+    CIRCLE_OBJS="$service_circle_objs" COMMON_OBJS="$service_common_objs" \
+    clean >/dev/null
+  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" \
+    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1" \
+    CIRCLE_OBJS="$service_circle_objs" COMMON_OBJS="$service_common_objs" \
+    -j"$(jobs)" >/dev/null
 
   [[ -f "${ROOT}/src/kernel.img" ]] || die "service kernel missing: ${ROOT}/src/kernel.img"
   cp -f "${ROOT}/src/kernel.img" "${OUT_DIR}/kernel_service.img"
