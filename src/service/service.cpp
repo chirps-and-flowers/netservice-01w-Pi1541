@@ -150,14 +150,33 @@ void service_init(void)
 	ServiceLoadOptions();
 	ServiceLoadFontROM();
 	ServiceEnsureLCD();
-	ServiceShow2("MINI SERVICE", "READY");
+
+	ServiceShow2("MINI SERVICE", "WLAN INIT");
+	if (!Kernel.wifi_start())
+	{
+		ServiceShow2("MINI SERVICE", "WLAN FAIL");
+		return;
+	}
+
+	// Association can take a bit. For S3 we only prove the SDIO/WLAN path is stable.
+	// DHCP/IP display comes in the next slice.
+	ServiceShow2("MINI SERVICE", "JOINING");
+	for (unsigned i = 0; i < 150; ++i) // ~15s
+	{
+		if (Kernel.wifi_is_connected())
+		{
+			break;
+		}
+		Kernel.get_scheduler()->MsSleep(100);
+	}
+
+	ServiceShow2("MINI SERVICE", Kernel.wifi_is_connected() ? "READY" : "NO LINK");
 }
 
 void service_run(void)
 {
 	Kernel.log("service: run");
 	ServiceEnsureLCD();
-	ServiceShow2("MINI SERVICE", "IDLE");
 
 	for (;;)
 	{

@@ -14,11 +14,15 @@
 #include "service.h"
 
 #define _DRIVE "SD:"
+#define _FIRMWARE_PATH _DRIVE "/firmware/"
+#define _CONFIG_FILE _DRIVE "/wpa_supplicant.conf"
 
 CServiceKernel::CServiceKernel(void)
 	: m_Timer(&m_Interrupt),
 	  m_Logger(m_Options.GetLogLevel(), &m_Timer),
-	  m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED)
+	  m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED),
+	  m_WLAN(_FIRMWARE_PATH),
+	  m_WPASupplicant(_CONFIG_FILE)
 {
 }
 
@@ -70,6 +74,36 @@ boolean CServiceKernel::Initialize(void)
 
 	m_Logger.Write("service", LogNotice, "mounted drive: %s", _DRIVE);
 	return TRUE;
+}
+
+boolean CServiceKernel::wifi_start(void)
+{
+	if (m_Net)
+	{
+		m_Logger.Write("service", LogNotice, "wifi: cleaning up net stack");
+		delete m_Net;
+		m_Net = nullptr;
+	}
+
+	// NOTE: For S3 we always use DHCP. Static IPv4 support comes in S4.
+	m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+	if (!m_Net)
+	{
+		m_Logger.Write("service", LogError, "wifi: net subsystem alloc failed");
+		return FALSE;
+	}
+
+	boolean ok = TRUE;
+	if (ok) ok = m_WLAN.Initialize();
+	if (ok) ok = m_Net->Initialize(FALSE);
+	if (ok) ok = m_WPASupplicant.Initialize();
+
+	if (!ok)
+	{
+		m_Logger.Write("service", LogError, "wifi: bringup failed");
+	}
+
+	return ok;
 }
 
 TShutdownMode CServiceKernel::Run(void)

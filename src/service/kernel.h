@@ -15,6 +15,8 @@
 #include <circle/interrupt.h>
 #include <circle/koptions.h>
 #include <circle/logger.h>
+#include <circle/net/netsubsystem.h>
+#include <circle/sched/scheduler.h>
 #include <circle/memory.h>
 #include <circle/serial.h>
 #include <circle/timer.h>
@@ -22,6 +24,8 @@
 
 #include <SDCard/emmc.h>
 #include <fatfs/ff.h>
+#include <wlan/bcm4343.h>
+#include <wlan/hostap/wpa_supplicant/wpasupplicant.h>
 
 enum TShutdownMode
 {
@@ -41,7 +45,12 @@ public:
 
 	// Minimal surface needed by existing code (debug.h, service app).
 	CTimer *get_timer(void) { return &m_Timer; }
+	CScheduler *get_scheduler(void) { return &m_Scheduler; }
 	void log(const char *fmt, ...);
+
+	// Service networking (Wi-Fi + NetSubSystem + wpa_supplicant).
+	boolean wifi_start(void);
+	boolean wifi_is_connected(void) const { return m_WPASupplicant.IsConnected(); }
 
 private:
 	CMemorySystem m_Memory;
@@ -52,10 +61,15 @@ private:
 	CExceptionHandler m_ExceptionHandler;
 	CInterruptSystem m_Interrupt;
 	CTimer m_Timer;
+	CScheduler m_Scheduler;
 	CLogger m_Logger;
 
 	CEMMCDevice m_EMMC;
 	FATFS m_FileSystem;
+
+	CBcm4343Device m_WLAN;
+	CNetSubSystem *m_Net = nullptr;
+	CWPASupplicant m_WPASupplicant;
 };
 
 // Global kernel instance used by various utility macros.
