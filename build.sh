@@ -127,7 +127,7 @@ build_service() {
   local service_circle_objs
   local service_common_objs
   service_circle_objs="service/main.o service/kernel.o"
-  service_common_objs="service/service.o service/shim.o options.o ScreenLCD.o SSD1306.o xga_font_data.o"
+  service_common_objs="service/service.o service/http_hello.o service/shim.o options.o ScreenLCD.o SSD1306.o xga_font_data.o"
 
   echo "service kernel: building (Circle, Pi Zero)" >&2
   make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" \

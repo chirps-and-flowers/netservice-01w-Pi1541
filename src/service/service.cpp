@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "http_hello.h"
 #include "kernel.h"
 #include "options.h"
 #include "ScreenLCD.h"
@@ -20,6 +21,7 @@ unsigned char *CBMFont = nullptr;
 
 // Service-mode globals. Keep them local to the service kernel build.
 static ScreenLCD *g_screenLCD = nullptr;
+static CServiceHelloServer *g_hello_server = nullptr;
 static Options g_options;
 
 static void ServiceShow2(const char *line0, const char *line1)
@@ -198,6 +200,16 @@ void service_init(void)
 	CString ip;
 	net->GetConfig()->GetIPAddress()->Format(&ip);
 	ServiceShow2("MINI SERVICE", (const char *) ip);
+
+	// Minimal HTTP API comes next (S5): /hello for connectivity probing.
+	if (!g_hello_server)
+	{
+		g_hello_server = new CServiceHelloServer(net);
+		if (!g_hello_server)
+		{
+			Kernel.log("service: http server alloc failed");
+		}
+	}
 }
 
 void service_run(void)
@@ -207,6 +219,6 @@ void service_run(void)
 
 	for (;;)
 	{
-		Kernel.get_timer()->MsDelay(250);
+		Kernel.get_scheduler()->MsSleep(250);
 	}
 }
