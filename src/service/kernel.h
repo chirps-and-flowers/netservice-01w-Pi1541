@@ -51,6 +51,7 @@ public:
 	// Service networking (Wi-Fi + NetSubSystem + wpa_supplicant).
 	boolean wifi_start(void);
 	boolean wifi_is_connected(void) const { return m_WPASupplicant.IsConnected(); }
+	CNetSubSystem *get_net(void) { return m_Net; }
 
 private:
 	CMemorySystem m_Memory;

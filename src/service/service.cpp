@@ -6,6 +6,7 @@
 
 #include "service.h"
 
+#include <circle/string.h>
 #include <fatfs/ff.h>
 #include <stdio.h>
 #include <string.h>
@@ -170,7 +171,33 @@ void service_init(void)
 		Kernel.get_scheduler()->MsSleep(100);
 	}
 
-	ServiceShow2("MINI SERVICE", Kernel.wifi_is_connected() ? "READY" : "NO LINK");
+	if (!Kernel.wifi_is_connected())
+	{
+		ServiceShow2("MINI SERVICE", "NO LINK");
+		return;
+	}
+
+	// Wait for DHCP (net subsystem running) and then show the IP.
+	CNetSubSystem *net = Kernel.get_net();
+	if (!net)
+	{
+		ServiceShow2("MINI SERVICE", "NO NET");
+		return;
+	}
+
+	ServiceShow2("MINI SERVICE", "DHCP");
+	for (unsigned i = 0; i < 150; ++i) // ~15s
+	{
+		if (net->IsRunning())
+		{
+			break;
+		}
+		Kernel.get_scheduler()->MsSleep(100);
+	}
+
+	CString ip;
+	net->GetConfig()->GetIPAddress()->Format(&ip);
+	ServiceShow2("MINI SERVICE", (const char *) ip);
 }
 
 void service_run(void)
