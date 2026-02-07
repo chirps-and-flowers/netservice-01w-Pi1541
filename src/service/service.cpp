@@ -1,12 +1,8 @@
-// service/service.cpp - Pi Zero W "service mode" implementation
+// service/service.cpp - service-kernel app: options + OLED status
 //
-// S1 goal: cold-bootable service kernel that can:
-// - mount SD (done by kernel init)
-// - load options.txt
-// - initialize OLED (SSD1306) if enabled
-// - show a banner and idle deterministically
-//
-// Networking and HTTP endpoints come in later steps.
+// Provenance:
+// - Refactored from pi1541_01w_network_old_works/src/main_service.cpp (pottendo-Pi1541 base).
+// - Uses the existing SSD1306/ScreenLCD + CBM font ROM rendering path.
 
 #include "service.h"
 
@@ -168,4 +164,3 @@ void service_run(void)
 		Kernel.get_timer()->MsDelay(250);
 	}
 }
-
