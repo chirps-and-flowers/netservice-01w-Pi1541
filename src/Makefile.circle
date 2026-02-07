@@ -62,6 +62,6 @@ LIBS := \
 	$(CIRCLEHOME)/lib/sched/libsched.a \
 	$(CIRCLEHOME)/lib/libcircle.a
 
-EXTRACLEAN = ${OBJS:.o=.d} ${SKVIC20OBJS:.o=.d} $(SKVIC20OBJS) $(RADOBJS) $(OLED) *.img *.lst *.map *.elf
+EXTRACLEAN = $(OBJS) $(OBJS:.o=.d) $(SKVIC20OBJS) $(SKVIC20OBJS:.o=.d) $(RADOBJS) $(OLED) *.img *.lst *.map *.elf
 
 -include $(DEPS)
