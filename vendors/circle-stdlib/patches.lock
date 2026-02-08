@@ -14,3 +14,6 @@
 # pottendo baseline Circle patches (as shipped upstream)
 libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 src/Circle/patch-circle-V50.0.1.diff 7d1dcc90b05ee43d3d23cad71091473de596f6dcc62a86e438eba536c5c3440d
 libs/circle/addon/wlan/hostap 237e65ecf72e531c7744cacbc444bd289c316712 src/Circle/patch-circle-V50.0.1-wpafix.diff bee51122f624e7b3488cff2c4c592f4e85bb07d8f4221b42d085774cb2535066
+
+# netservice Circle patches (prototype-proven)
+libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 vendors/circle-stdlib/patches/0002-circle-http-put-header-body.patch 1e1628edec14bb4417c0f32558fda973d25eb7011212ffd544ec4959bec4e036
