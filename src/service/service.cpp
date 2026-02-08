@@ -1,8 +1,8 @@
-// service/service.cpp - service-kernel app: options + OLED status
+// service/service.cpp - service-kernel app: options + OLED status.
 //
-// Provenance:
-// - Refactored from pi1541_01w_network_old_works/src/main_service.cpp (pottendo-Pi1541 base).
-// - Uses the existing SSD1306/ScreenLCD + CBM font ROM rendering path.
+// See docs/service-http.md for the HTTP control plane contract.
+//
+// Uses the existing SSD1306/ScreenLCD + CBM font ROM rendering path.
 
 #include "service.h"
 

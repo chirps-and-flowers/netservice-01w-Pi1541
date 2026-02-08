@@ -1,8 +1,8 @@
-// service/http_server.cpp - HTTP control plane for the service kernel
+// service/http_server.cpp - HTTP control plane for the service kernel.
 //
-// Provenance:
-// - Ported from pi1541_01w_network_old_works/src/meta_server.cpp (prototype).
-// - Uses Circle's CHTTPDaemon (patched to support PUT + raw header/body access).
+// See docs/service-http.md for the API and on-SD layout contract.
+//
+// Uses Circle's CHTTPDaemon (vendor-patched for PUT + raw header/body access).
 
 #include "http_server.h"
 
@@ -16,6 +16,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,6 +47,38 @@ static uint32_t g_modified_id = 0;
 
 static uint32_t Crc32Update(uint32_t crc, const u8 *data, size_t len);
 
+static constexpr size_t kMaxLineLength = 512;
+static constexpr size_t kMaxPathLength = 512;
+static constexpr size_t kActiveLineLength = 256;
+static constexpr size_t kFsPathLength = 256;
+static constexpr size_t kJsonSmallResponse = 256;
+
+// Safe append to a JSON response buffer; returns false if it would truncate.
+static bool JsonAppend(char *dst, size_t cap, size_t *off, const char *fmt, ...)
+{
+	if (!dst || cap == 0 || !off || !fmt)
+		return false;
+	if (*off >= cap)
+		return false;
+
+	va_list args;
+	va_start(args, fmt);
+	const int n = vsnprintf(dst + *off, cap - *off, fmt, args);
+	va_end(args);
+
+	if (n < 0)
+		return false;
+	const size_t want = static_cast<size_t>(n);
+	if (want >= cap - *off)
+	{
+		// Truncated.
+		return false;
+	}
+
+	*off += want;
+	return true;
+}
+
 static uint32_t MakeNonce(void)
 {
 	CBcmRandomNumberGenerator rng;
@@ -61,7 +94,7 @@ static bool ParseU32(const char *s, uint32_t *out)
 		return false;
 
 	char *end = nullptr;
-	// Accept both decimal and hex (0x...) to match the prototype client/server behavior.
+	// Accept decimal or hex (0x...) because CRC32/size are commonly represented in hex by clients.
 	unsigned long v = strtoul(s, &end, 0);
 	if (end == s)
 		return false;
@@ -79,9 +112,60 @@ static bool EnsureDir(const char *path)
 	return f_mkdir(path) == FR_OK;
 }
 
-static bool EnsureMetaDirs(void)
+static bool EnsureServiceDirs(void)
 {
 	return EnsureDir("/1541") && EnsureDir(kIncomingDir) && EnsureDir(kActiveMountDir) && EnsureDir(kTempDirtyDir);
+}
+
+static bool ContainsDotDotSegment(const char *path)
+{
+	if (!path)
+		return false;
+
+	const char *p = path;
+	while (*p)
+	{
+		while (*p == '/' || *p == '\\')
+			++p;
+		const char *seg = p;
+		while (*p && *p != '/' && *p != '\\')
+			++p;
+		const size_t len = static_cast<size_t>(p - seg);
+		if (len == 2 && seg[0] == '.' && seg[1] == '.')
+			return true;
+	}
+
+	return false;
+}
+
+static bool StartsWithDir(const char *path, const char *dir)
+{
+	if (!path || !dir)
+		return false;
+	const size_t n = strlen(dir);
+	if (strncmp(path, dir, n) != 0)
+		return false;
+	return path[n] == '\0' || path[n] == '/';
+}
+
+static bool IsSafeLeafName(const char *name)
+{
+	if (!name || !name[0])
+		return false;
+	if (strchr(name, '/') || strchr(name, '\\'))
+		return false;
+	if (ContainsDotDotSegment(name))
+		return false;
+	return true;
+}
+
+static bool IsAllowedModifiedPath(const char *path)
+{
+	if (!path || !path[0])
+		return false;
+	if (ContainsDotDotSegment(path))
+		return false;
+	return StartsWithDir(path, kActiveMountDir) || StartsWithDir(path, kTempDirtyDir);
 }
 
 static void TrimLine(char *s)
@@ -89,7 +173,7 @@ static void TrimLine(char *s)
 	if (!s)
 		return;
 
-	// Trim trailing whitespace.
+	// Trim whitespace for FAT text files (often CRLF and/or trailing spaces).
 	size_t n = strlen(s);
 	while (n && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r' || s[n - 1] == '\n'))
 		s[--n] = '\0';
@@ -97,9 +181,13 @@ static void TrimLine(char *s)
 	// Trim leading whitespace.
 	size_t i = 0;
 	while (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')
+	{
 		++i;
-		if (i)
-			memmove(s, s + i, strlen(s + i) + 1);
+	}
+	if (i)
+	{
+		memmove(s, s + i, strlen(s + i) + 1);
+	}
 }
 
 static void BasenameOf(const char *path, char *out, size_t out_len)
@@ -132,7 +220,7 @@ static bool ReadModifiedListSummary(unsigned *out_count, uint32_t *out_crc)
 
 	uint32_t crc = 0;
 	unsigned count = 0;
-	char line[512];
+	char line[kMaxLineLength];
 	unsigned pos = 0;
 
 	UINT br = 0;
@@ -182,7 +270,7 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 		g_modified_cached[i][0] = '\0';
 	}
 
-	char line[512];
+	char line[kMaxLineLength];
 	unsigned pos = 0;
 	UINT br = 0;
 	char ch = 0;
@@ -199,7 +287,7 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 				continue;
 
 			const char *src_path = line;
-			char src_full[512];
+			char src_full[kMaxPathLength];
 			if (line[0] != '/')
 			{
 				if (strchr(line, '/') || strchr(line, '\\'))
@@ -208,6 +296,9 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 					snprintf(src_full, sizeof(src_full), "%s/%s", kActiveMountDir, line);
 				src_path = src_full;
 			}
+
+			if (!IsAllowedModifiedPath(src_path))
+				continue;
 
 			char base[64];
 			BasenameOf(src_path, base, sizeof(base));
@@ -228,7 +319,7 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 		if (line[0])
 		{
 			const char *src_path = line;
-			char src_full[512];
+			char src_full[kMaxPathLength];
 			if (line[0] != '/')
 			{
 				if (strchr(line, '/') || strchr(line, '\\'))
@@ -238,11 +329,14 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 				src_path = src_full;
 			}
 
-			char base[64];
-			BasenameOf(src_path, base, sizeof(base));
-			snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
-			snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
-			++g_modified_count;
+			if (IsAllowedModifiedPath(src_path))
+			{
+				char base[64];
+				BasenameOf(src_path, base, sizeof(base));
+				snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
+				snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+				++g_modified_count;
+			}
 		}
 	}
 
@@ -261,9 +355,9 @@ static bool EnsureModifiedListLoaded(void)
 		return false;
 	}
 
-	// If we already have the direct list for this exact dirty.lst, keep it.
-	if (g_modified_id == crc && g_modified_count == count)
-		return true;
+	// If we already parsed this exact dirty.lst content, keep the cached list.
+	if (g_modified_id == crc)
+		return g_modified_count != 0;
 
 	return PopulateModifiedListDirect(crc);
 }
@@ -280,7 +374,7 @@ static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
 	if (f_open(&fp, kActiveListPath, FA_READ) != FR_OK)
 		return false;
 
-	char line[256];
+	char line[kActiveLineLength];
 	unsigned pos = 0;
 	UINT br = 0;
 	char ch = 0;
@@ -295,6 +389,8 @@ static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
 			pos = 0;
 			if (!line[0] || out_count >= kPendingMax)
 				continue;
+			if (!IsSafeLeafName(line))
+				continue;
 			snprintf(out_names[out_count], 64, "%s", line);
 			++out_count;
 			continue;
@@ -308,7 +404,7 @@ static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
 	{
 		line[pos] = '\0';
 		TrimLine(line);
-		if (line[0])
+		if (line[0] && IsSafeLeafName(line))
 		{
 			snprintf(out_names[out_count], 64, "%s", line);
 			++out_count;
@@ -436,7 +532,7 @@ static bool AddPendingUpload(const char *name)
 
 static bool ClearActiveMountDir(void)
 {
-	if (!EnsureMetaDirs())
+	if (!EnsureServiceDirs())
 		return false;
 
 	DIR dir;
@@ -457,7 +553,7 @@ static bool ClearActiveMountDir(void)
 			break;
 		if (fi.fattrib & AM_DIR)
 			continue;
-		char path[256];
+		char path[kFsPathLength];
 		snprintf(path, sizeof(path), "%s/%s", kActiveMountDir, fi.fname);
 		f_unlink(path);
 	}
@@ -467,7 +563,7 @@ static bool ClearActiveMountDir(void)
 
 static bool WriteActiveListFromPending(void)
 {
-	if (!EnsureMetaDirs())
+	if (!EnsureServiceDirs())
 		return false;
 
 	FIL fp;
@@ -593,7 +689,7 @@ THTTPStatus CServiceHttpServer::HandleUpload(u8 *pBuffer, unsigned *pLength, boo
 	EnsureExtension(name, sizeof(name), type_hint);
 
 	ResetPendingUploads(nonce, !append_list);
-	if (!EnsureMetaDirs())
+	if (!EnsureServiceDirs())
 		return WriteJsonError(pBuffer, pLength, "FS_DIR");
 
 	char temp_path[256];
@@ -701,10 +797,14 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 
 		unsigned modified_count = 0;
 		uint32_t modified_id = 0;
-		ReadModifiedListSummary(&modified_count, &modified_id);
+		if (EnsureModifiedListLoaded())
+		{
+			modified_count = g_modified_count;
+			modified_id = g_modified_id;
+		}
 
-		// Keep prototype response shape to minimize frontend churn.
-		char response[256];
+		// Keep response shape stable to minimize frontend churn.
+		char response[kJsonSmallResponse];
 		snprintf(response, sizeof(response),
 			 "{\"state\":\"READY\",\"nonce\":%u,\"tcp_port\":%u,\"caps\":[],\"modified_count\":%u,\"modified_id\":%u}",
 			 static_cast<unsigned>(g_nonce),
@@ -722,21 +822,25 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		if (!EnsureModifiedListLoaded())
 			return WriteJsonResult(pBuffer, pLength, "{\"session\":\"\",\"count\":0,\"files\":[]}");
 
-		char response[4096];
-		unsigned off = 0;
-		off += snprintf(response + off, sizeof(response) - off,
-				"{\"session\":\"\",\"count\":%u,\"files\":[", g_modified_count);
+		char *out = reinterpret_cast<char *>(pBuffer);
+		const size_t cap = static_cast<size_t>(*pLength);
+		size_t off = 0;
+		if (!JsonAppend(out, cap, &off, "{\"session\":\"\",\"count\":%u,\"files\":[", g_modified_count))
+			return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
 		for (unsigned i = 0; i < g_modified_count; ++i)
 		{
 			if (i)
-				off += snprintf(response + off, sizeof(response) - off, ",");
-			off += snprintf(response + off, sizeof(response) - off,
-					"{\"i\":%u,\"name\":\"%s\"}", i + 1, g_modified_display[i]);
-			if (off >= sizeof(response))
-				break;
+			{
+				if (!JsonAppend(out, cap, &off, ","))
+					return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
+			}
+			if (!JsonAppend(out, cap, &off, "{\"i\":%u,\"name\":\"%s\"}", i + 1, g_modified_display[i]))
+				return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
 		}
-		off += snprintf(response + off, sizeof(response) - off, "]}");
-		return WriteJsonResult(pBuffer, pLength, response);
+		if (!JsonAppend(out, cap, &off, "]}"))
+			return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
+		*pLength = static_cast<unsigned>(off);
+		return HTTPOK;
 	}
 
 	if (strncmp(pPath, "/modified/download/", 19) == 0)
@@ -754,6 +858,8 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 
 		const char *file_path = g_modified_cached[idx - 1];
 		if (!file_path || !file_path[0])
+			return HTTPNotFound;
+		if (!IsAllowedModifiedPath(file_path))
 			return HTTPNotFound;
 
 		FIL fp;
@@ -821,20 +927,25 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		if (!ReadActiveList(names, count) || count == 0)
 			return WriteJsonResult(pBuffer, pLength, "{\"count\":0,\"files\":[]}");
 
-		char response[2048];
-		unsigned off = 0;
-		off += snprintf(response + off, sizeof(response) - off, "{\"count\":%u,\"files\":[", count);
+		char *out = reinterpret_cast<char *>(pBuffer);
+		const size_t cap = static_cast<size_t>(*pLength);
+		size_t off = 0;
+		if (!JsonAppend(out, cap, &off, "{\"count\":%u,\"files\":[", count))
+			return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
 		for (unsigned i = 0; i < count; ++i)
 		{
 			if (i)
-				off += snprintf(response + off, sizeof(response) - off, ",");
-			off += snprintf(response + off, sizeof(response) - off,
-					"{\"i\":%u,\"name\":\"%s\"}", i + 1, names[i]);
-			if (off >= sizeof(response))
-				break;
+			{
+				if (!JsonAppend(out, cap, &off, ","))
+					return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
+			}
+			if (!JsonAppend(out, cap, &off, "{\"i\":%u,\"name\":\"%s\"}", i + 1, names[i]))
+				return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
 		}
-		off += snprintf(response + off, sizeof(response) - off, "]}");
-		return WriteJsonResult(pBuffer, pLength, response);
+		if (!JsonAppend(out, cap, &off, "]}"))
+			return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
+		*pLength = static_cast<unsigned>(off);
+		return HTTPOK;
 	}
 
 	if (strncmp(pPath, "/active/download/", 17) == 0)
@@ -851,8 +962,10 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		unsigned idx = static_cast<unsigned>(atoi(idx_text));
 		if (idx == 0 || idx > count)
 			return HTTPNotFound;
+		if (!IsSafeLeafName(names[idx - 1]))
+			return HTTPNotFound;
 
-		char path[256];
+		char path[kFsPathLength];
 		snprintf(path, sizeof(path), "%s/%s", kActiveMountDir, names[idx - 1]);
 		FIL fp;
 		if (f_open(&fp, path, FA_READ) != FR_OK)

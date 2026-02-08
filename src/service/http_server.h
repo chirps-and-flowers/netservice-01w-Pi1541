@@ -1,8 +1,8 @@
-// service/http_server.h - HTTP control plane for the service kernel
+// service/http_server.h - HTTP control plane for the service kernel.
 //
-// Provenance:
-// - Ported from pi1541_01w_network_old_works/src/meta_server.cpp (prototype).
-// - Uses Circle's CHTTPDaemon (patched to support PUT + raw header/body access).
+// See docs/service-http.md for the API and on-SD layout contract.
+//
+// Uses Circle's CHTTPDaemon (vendor-patched for PUT + raw header/body access).
 
 #ifndef NETSERVICE_HTTP_SERVER_H
 #define NETSERVICE_HTTP_SERVER_H
