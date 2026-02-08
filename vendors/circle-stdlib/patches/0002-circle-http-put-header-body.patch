@@ -1,0 +1,348 @@
+From eabddb4912bbf8ecd2673dcf267b06bde03769a4 Mon Sep 17 00:00:00 2001
+From: Jakob Rosenskjold <jakob.rosenskjold@outlook.com>
+Date: Mon, 19 Jan 2026 02:19:49 +0100
+Subject: [PATCH 2/2] feat: add HTTP PUT and header/body access extensions for
+ Pi1541
+
+---
+ include/circle/net/http.h       |   1 +
+ include/circle/net/httpdaemon.h |  14 ++++
+ lib/net/httpclient.cpp          |   1 +
+ lib/net/httpdaemon.cpp          | 127 +++++++++++++++++++++++++++++---
+ 4 files changed, 134 insertions(+), 9 deletions(-)
+
+diff --git a/include/circle/net/http.h b/include/circle/net/http.h
+index 28a3779c..bb2f10bc 100644
+--- a/include/circle/net/http.h
++++ b/include/circle/net/http.h
+@@ -36,6 +36,7 @@ enum THTTPRequestMethod
+ 	HTTPRequestMethodGet,
+ 	HTTPRequestMethodHead,
+ 	HTTPRequestMethodPost,
++	HTTPRequestMethodPut,
+ 	HTTPRequestMethodUnknown
+ };
+ 
+diff --git a/include/circle/net/httpdaemon.h b/include/circle/net/httpdaemon.h
+index 3e67865c..63aedaa0 100644
+--- a/include/circle/net/httpdaemon.h
++++ b/include/circle/net/httpdaemon.h
+@@ -57,7 +57,15 @@ public:
+ 				     THTTPStatus 	 Status,
+ 				     unsigned		 nContentLength);
+ 
++	// request listener shutdown (worker tasks finish current request)
++	void RequestStop (void);
++
+ protected:
++	// access parsed request metadata (only valid inside GetContent)
++	const char *GetHeaderValue (const char *pName) const;
++	const u8   *GetRawRequestBody (unsigned *pLength) const;
++	THTTPRequestMethod GetRequestMethod (void) const;
++
+ 	// returns the next part from multipart form data (TRUE if available)
+ 	// data is not available after returning from GetContent() any more
+ 	boolean GetMultipartFormPart (const char **ppHeader,	// returns part header
+@@ -83,6 +91,7 @@ private:
+ 	unsigned       m_nMaxMultipartSize;
+ 	
+ 	u8 *m_pContentBuffer;
++	volatile boolean m_bStopRequested;
+ 
+ 	// from request
+ 	THTTPRequestMethod m_RequestMethod;
+@@ -94,6 +103,11 @@ private:
+ 	boolean m_bRequestFormDataAvailable;		// form data is available
+ 	unsigned m_nRequestContentLength;		// length of form data from POST request
+ 	char m_RequestFormData[HTTP_MAX_FORM_DATA+1];	// form data from POST request
++	unsigned m_nRawRequestLength;
++
++	unsigned m_nHeaderCount;
++	char m_HeaderNames[16][32];
++	char m_HeaderValues[16][128];
+ 
+ 	boolean m_bMultipartFormDataAvailable;		// multipart form data is available
+ 	char m_MultipartBoundary[HTTP_MAX_MULTIPART_BOUNDARY+1]; // boundary string
+diff --git a/lib/net/httpclient.cpp b/lib/net/httpclient.cpp
+index 29aec901..993b4151 100644
+--- a/lib/net/httpclient.cpp
++++ b/lib/net/httpclient.cpp
+@@ -82,6 +82,7 @@ THTTPStatus CHTTPClient::Request (THTTPRequestMethod  Method,
+ 	{
+ 	case HTTPRequestMethodGet:	pMethod = "GET";	break;
+ 	case HTTPRequestMethodPost:	pMethod = "POST";	break;
++	case HTTPRequestMethodPut:	pMethod = "PUT";	break;
+ 
+ 	default:
+ 		assert (0);
+diff --git a/lib/net/httpdaemon.cpp b/lib/net/httpdaemon.cpp
+index fbb20daa..15bd964c 100644
+--- a/lib/net/httpdaemon.cpp
++++ b/lib/net/httpdaemon.cpp
+@@ -50,6 +50,7 @@ CHTTPDaemon::CHTTPDaemon (CNetSubSystem *pNetSubSystem, CSocket *pSocket,
+ 	m_pContentBuffer (0)
+ {
+ 	s_nInstanceCount++;
++	m_bStopRequested = FALSE;
+ 
+ 	if (m_nMaxContentSize > 0)
+ 	{
+@@ -82,6 +83,27 @@ CHTTPDaemon::~CHTTPDaemon (void)
+ 	s_nInstanceCount--;
+ }
+ 
++void CHTTPDaemon::RequestStop (void)
++{
++	m_bStopRequested = TRUE;
++	// CSocket has no Abort() in current Circle. Best-effort wakeup: connect once
++	// to our own listener port so a blocking Accept() returns and can observe the
++	// stop flag.
++	if (m_pSocket && m_pNetSubSystem)
++	{
++		CNetConfig *pConfig = m_pNetSubSystem->GetConfig ();
++		if (pConfig)
++		{
++			const CIPAddress *pIP = pConfig->GetIPAddress ();
++			if (pIP && !pIP->IsNull ())
++			{
++				CSocket WakeSocket (m_pNetSubSystem, IPPROTO_TCP);
++				(void) WakeSocket.Connect (*pIP, m_nPort);
++			}
++		}
++	}
++}
++
+ void CHTTPDaemon::Run (void)
+ {
+ 	if (m_pSocket == 0)
+@@ -109,6 +119,7 @@ void CHTTPDaemon::WriteAccessLog (const CIPAddress &rRemoteIP, THTTPRequestMetho
+ 	case HTTPRequestMethodGet:	pMethod = "GET";	break;
+ 	case HTTPRequestMethodHead:	pMethod = "HEAD";	break;
+ 	case HTTPRequestMethodPost:	pMethod = "POST";	break;
++	case HTTPRequestMethodPut:	pMethod = "PUT";	break;
+ 	default:			pMethod = "UNKNOWN";	break;
+ 	}
+ 
+@@ -116,6 +127,40 @@ void CHTTPDaemon::WriteAccessLog (const CIPAddress &rRemoteIP, THTTPRequestMetho
+ 				(const char *) IPString, pMethod, pRequestURI, Status, nContentLength);
+ }
+ 
++const char *CHTTPDaemon::GetHeaderValue (const char *pName) const
++{
++	if (!pName)
++	{
++		return 0;
++	}
++	for (unsigned i = 0; i < m_nHeaderCount; ++i)
++	{
++		if (strcasecmp (m_HeaderNames[i], pName) == 0)
++		{
++			return m_HeaderValues[i];
++		}
++	}
++	return 0;
++}
++
++const u8 *CHTTPDaemon::GetRawRequestBody (unsigned *pLength) const
++{
++	if (pLength)
++	{
++		*pLength = m_nRawRequestLength;
++	}
++	if (m_nRawRequestLength == 0)
++	{
++		return 0;
++	}
++	return m_pContentBuffer;
++}
++
++THTTPRequestMethod CHTTPDaemon::GetRequestMethod (void) const
++{
++	return m_RequestMethod;
++}
++
+ void CHTTPDaemon::Listener (void)
+ {
+ 	assert (m_pNetSubSystem != 0);
+@@ -142,18 +187,27 @@ void CHTTPDaemon::Listener (void)
+ 		return;
+ 	}
+ 
+-	while (1)
++	while (!m_bStopRequested)
+ 	{
+ 		CIPAddress ForeignIP;
+ 		u16 nForeignPort;
+ 		CSocket *pConnection = m_pSocket->Accept (&ForeignIP, &nForeignPort);
+ 		if (pConnection == 0)
+ 		{
++			if (m_bStopRequested)
++			{
++				break;
++			}
+ 			CLogger::Get ()->Write (FromHTTPDaemon, LogWarning, "Cannot accept connection");
+-
+ 			continue;
+ 		}
+ 
++		if (m_bStopRequested)
++		{
++			delete pConnection;
++			break;
++		}
++
+ 		if (s_nInstanceCount >= MAX_CLIENTS+1)
+ 		{
+ 			CLogger::Get ()->Write (FromHTTPDaemon, LogWarning, "Too many clients");
+@@ -165,6 +219,9 @@ void CHTTPDaemon::Listener (void)
+ 
+ 		CreateWorker (m_pNetSubSystem, pConnection);
+ 	}
++
++	delete m_pSocket;
++	m_pSocket = 0;
+ }
+ 
+ void CHTTPDaemon::Worker (void)
+@@ -295,6 +352,8 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 	m_bRequestFormDataAvailable = FALSE;
+ 	m_nRequestContentLength = 0;
+ 	m_RequestFormData[0] = '\0';
++	m_nRawRequestLength = 0;
++	m_nHeaderCount = 0;
+ 	m_bMultipartFormDataAvailable = FALSE;
+ 	m_MultipartBoundary[0] = '\0';
+ 	m_nMultipartContentLength = 0;
+@@ -306,14 +365,14 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 	#error Increase HTTPD_STACK_SIZE!
+ #endif
+ 
+-	unsigned nState = 0; // 0: parse header, 1: parse form data, 2: parse multipart data, 3: leave
++	unsigned nState = 0; // 0: parse header, 1: form, 2: multipart, 3: raw, 4: leave
+ 	unsigned nLine = 0;
+ 	unsigned nChar = 0;
+ 
+ 	int nResult;
+ 
+ 	assert (m_pSocket != 0);
+-	while (   nState < 3
++	while (   nState < 4
+ 	       && (nResult = m_pSocket->Receive (Buffer, sizeof Buffer, 0)) > 0)
+ 	{
+ 		for (unsigned i = 0; i < (unsigned) nResult; i++)
+@@ -342,7 +401,7 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 							else
+ 							{
+ 								Status = HTTPRequestEntityTooLarge;
+-								nState = 3;
++								nState = 4;
+ 							}
+ 						}
+ 						else if (   m_bMultipartFormDataAvailable
+@@ -358,7 +417,7 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 								if (m_pMultipartBuffer == 0)
+ 								{
+ 									Status = HTTPInternalServerError;
+-									nState = 3;
++									nState = 4;
+ 								}
+ 								else
+ 								{
+@@ -369,12 +428,25 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 							else
+ 							{
+ 								Status = HTTPRequestEntityTooLarge;
++								nState = 4;
++							}
++						}
++						else if (m_nRequestContentLength > 0)
++						{
++							if (m_nRequestContentLength <= m_nMaxContentSize && m_pContentBuffer)
++							{
++								nChar = 0;
+ 								nState = 3;
+ 							}
++							else
++							{
++								Status = HTTPRequestEntityTooLarge;
++								nState = 4;
++							}
+ 						}
+ 						else
+ 						{
+-							nState = 3;
++							nState = 4;
+ 						}
+ 					}
+ 					else
+@@ -418,7 +490,7 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 
+ 				if (nChar >= m_nRequestContentLength)
+ 				{
+-					nState = 3;
++					nState = 4;
+ 				}
+ 			}
+ 			else if (nState == 2)
+@@ -429,7 +501,16 @@ THTTPStatus CHTTPDaemon::ParseRequest (void)
+ 				{
+ 					m_pMultipartPointer = m_pMultipartBuffer;
+ 
+-					nState = 3;
++					nState = 4;
++				}
++			}
++			else if (nState == 3)
++			{
++				m_pContentBuffer[nChar++] = chChar;
++				if (nChar >= m_nRequestContentLength)
++				{
++					m_nRawRequestLength = nChar;
++					nState = 4;
+ 				}
+ 			}
+ 		}
+@@ -494,6 +575,10 @@ THTTPStatus CHTTPDaemon::ParseMethod (char *pLine)
+ 	{
+ 		m_RequestMethod = HTTPRequestMethodPost;
+ 	}
++	else if (strcmp (pToken, "PUT") == 0)
++	{
++		m_RequestMethod = HTTPRequestMethodPut;
++	}
+ 	else
+ 	{
+ 		return HTTPMethodNotImplemented;
+@@ -541,6 +626,30 @@ THTTPStatus CHTTPDaemon::ParseHeaderField (char *pLine)
+ 		return HTTPBadRequest;
+ 	}
+ 
++	if (m_nHeaderCount < (sizeof m_HeaderNames / sizeof m_HeaderNames[0]))
++	{
++		char *pValue = pSavePtr ? pSavePtr : (char *)"";
++		while (*pValue == ' ' || *pValue == '\t')
++		{
++			++pValue;
++		}
++		strncpy (m_HeaderNames[m_nHeaderCount], pToken, sizeof m_HeaderNames[0] - 1);
++		m_HeaderNames[m_nHeaderCount][sizeof m_HeaderNames[0] - 1] = '\0';
++
++		size_t len = strlen (pValue);
++		while (len > 0 && (pValue[len - 1] == '\r' || pValue[len - 1] == '\n' || pValue[len - 1] == ' ' || pValue[len - 1] == '\t'))
++		{
++			--len;
++		}
++		if (len >= sizeof m_HeaderValues[0])
++		{
++			len = sizeof m_HeaderValues[0] - 1;
++		}
++		memcpy (m_HeaderValues[m_nHeaderCount], pValue, len);
++		m_HeaderValues[m_nHeaderCount][len] = '\0';
++		++m_nHeaderCount;
++	}
++
+ 	if (strcmp (pToken, "Content-Type") == 0)
+ 	{
+ 		if ((pToken = strtok_r (0, " ;", &pSavePtr)) == 0)
+-- 
+2.52.0
