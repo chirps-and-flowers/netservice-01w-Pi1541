@@ -51,12 +51,14 @@ index 3e67865c..63aedaa0 100644
  
  	// from request
  	THTTPRequestMethod m_RequestMethod;
-@@ -94,6 +103,11 @@ private:
+@@ -94,6 +103,13 @@ private:
  	boolean m_bRequestFormDataAvailable;		// form data is available
  	unsigned m_nRequestContentLength;		// length of form data from POST request
  	char m_RequestFormData[HTTP_MAX_FORM_DATA+1];	// form data from POST request
 +	unsigned m_nRawRequestLength;
 +
++	// Fixed-size header cache for the Pi1541 upload protocol (X-Nonce, X-Image-Size, X-CRC32, ...).
++	// This keeps RAM usage bounded (no heap allocations). Headers beyond this cap are ignored.
 +	unsigned m_nHeaderCount;
 +	char m_HeaderNames[16][32];
 +	char m_HeaderValues[16][128];
@@ -302,12 +304,14 @@ index fbb20daa..15bd964c 100644
  				}
  			}
  		}
-@@ -494,6 +575,10 @@ THTTPStatus CHTTPDaemon::ParseMethod (char *pLine)
+@@ -494,6 +575,12 @@ THTTPStatus CHTTPDaemon::ParseMethod (char *pLine)
  	{
  		m_RequestMethod = HTTPRequestMethodPost;
  	}
 +	else if (strcmp (pToken, "PUT") == 0)
 +	{
++		// Added for netservice (01W): uploads use PUT (e.g. PUT /upload/active) so clients can retry safely:
++		// the request means "replace ACTIVE" and is idempotent. POST is for non-idempotent actions; GET is download-only.
 +		m_RequestMethod = HTTPRequestMethodPut;
 +	}
  	else

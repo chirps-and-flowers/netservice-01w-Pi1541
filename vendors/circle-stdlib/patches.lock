@@ -16,4 +16,4 @@ libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 src/Circle/patch-circle-V50
 libs/circle/addon/wlan/hostap 237e65ecf72e531c7744cacbc444bd289c316712 src/Circle/patch-circle-V50.0.1-wpafix.diff bee51122f624e7b3488cff2c4c592f4e85bb07d8f4221b42d085774cb2535066
 
 # netservice Circle patches (prototype-proven)
-libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 vendors/circle-stdlib/patches/0002-circle-http-put-header-body.patch 1e1628edec14bb4417c0f32558fda973d25eb7011212ffd544ec4959bec4e036
+libs/circle 3bbfd6e31a64e5891aa12d479b2d795bfa6b1ec4 vendors/circle-stdlib/patches/0002-circle-http-put-header-body.patch 8a0b52f2fbd8cf1886416b69995f8b26510fa525135e696d40b6a1ed0bc12749
