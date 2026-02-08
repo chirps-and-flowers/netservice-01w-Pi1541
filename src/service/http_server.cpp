@@ -74,6 +74,75 @@ static bool EnsureMetaDirs(void)
 	return EnsureDir("/1541") && EnsureDir(kIncomingDir) && EnsureDir(kActiveMountDir) && EnsureDir(kTempDirtyDir);
 }
 
+static void TrimLine(char *s)
+{
+	if (!s)
+		return;
+
+	// Trim trailing whitespace.
+	size_t n = strlen(s);
+	while (n && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r' || s[n - 1] == '\n'))
+		s[--n] = '\0';
+
+	// Trim leading whitespace.
+	size_t i = 0;
+	while (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')
+		++i;
+	if (i)
+		memmove(s, s + i, strlen(s + i) + 1);
+}
+
+static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
+{
+	out_count = 0;
+	for (unsigned i = 0; i < kPendingMax; ++i)
+	{
+		out_names[i][0] = '\0';
+	}
+
+	FIL fp;
+	if (f_open(&fp, kActiveListPath, FA_READ) != FR_OK)
+		return false;
+
+	char line[256];
+	unsigned pos = 0;
+	UINT br = 0;
+	char ch = 0;
+	while (f_read(&fp, &ch, 1, &br) == FR_OK && br == 1)
+	{
+		if (ch == '\r')
+			continue;
+		if (ch == '\n')
+		{
+			line[pos] = '\0';
+			TrimLine(line);
+			pos = 0;
+			if (!line[0] || out_count >= kPendingMax)
+				continue;
+			snprintf(out_names[out_count], 64, "%s", line);
+			++out_count;
+			continue;
+		}
+		if (pos + 1 < sizeof(line))
+			line[pos++] = ch;
+	}
+
+	// Handle last line without newline.
+	if (pos && out_count < kPendingMax)
+	{
+		line[pos] = '\0';
+		TrimLine(line);
+		if (line[0])
+		{
+			snprintf(out_names[out_count], 64, "%s", line);
+			++out_count;
+		}
+	}
+
+	f_close(&fp);
+	return out_count != 0;
+}
+
 static void SanitizeFilename(const char *input, char *output, size_t output_len)
 {
 	if (!output || output_len == 0)
@@ -494,6 +563,71 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 			return WriteJsonError(pBuffer, pLength, "FS_COMMIT");
 
 		return WriteJsonResult(pBuffer, pLength, "{\"ok\":true,\"committed\":true}");
+	}
+
+	if (strcmp(pPath, "/active/list") == 0 || strcmp(pPath, "/active/list/") == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+
+		static char names[kPendingMax][64];
+		unsigned count = 0;
+		if (!ReadActiveList(names, count) || count == 0)
+			return WriteJsonResult(pBuffer, pLength, "{\"count\":0,\"files\":[]}");
+
+		char response[2048];
+		unsigned off = 0;
+		off += snprintf(response + off, sizeof(response) - off, "{\"count\":%u,\"files\":[", count);
+		for (unsigned i = 0; i < count; ++i)
+		{
+			if (i)
+				off += snprintf(response + off, sizeof(response) - off, ",");
+			off += snprintf(response + off, sizeof(response) - off,
+					"{\"i\":%u,\"name\":\"%s\"}", i + 1, names[i]);
+			if (off >= sizeof(response))
+				break;
+		}
+		off += snprintf(response + off, sizeof(response) - off, "]}");
+		return WriteJsonResult(pBuffer, pLength, response);
+	}
+
+	if (strncmp(pPath, "/active/download/", 17) == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+
+		static char names[kPendingMax][64];
+		unsigned count = 0;
+		if (!ReadActiveList(names, count) || count == 0)
+			return HTTPNotFound;
+
+		const char *idx_text = pPath + 17;
+		unsigned idx = static_cast<unsigned>(atoi(idx_text));
+		if (idx == 0 || idx > count)
+			return HTTPNotFound;
+
+		char path[256];
+		snprintf(path, sizeof(path), "%s/%s", kActiveMountDir, names[idx - 1]);
+		FIL fp;
+		if (f_open(&fp, path, FA_READ) != FR_OK)
+			return HTTPNotFound;
+
+		const unsigned cap = *pLength;
+		const FSIZE_t sz = f_size(&fp);
+		if (sz > cap)
+		{
+			f_close(&fp);
+			return HTTPRequestEntityTooLarge;
+		}
+		UINT br = 0;
+		FRESULT fr = f_read(&fp, pBuffer, cap, &br);
+		f_close(&fp);
+		if (fr != FR_OK)
+			return HTTPInternalServerError;
+
+		*ppContentType = "application/octet-stream";
+		*pLength = br;
+		return HTTPOK;
 	}
 
 	return HTTPNotFound;
