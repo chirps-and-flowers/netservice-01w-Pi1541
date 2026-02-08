@@ -27,6 +27,7 @@ static const char kMetaContentType[] = "application/json";
 static const char kIncomingDir[] = "/1541/_incoming";
 static const char kActiveMountDir[] = "/1541/_active_mount";
 static const char kTempDirtyDir[] = "/1541/_temp_dirty_disks";
+static const char kModifiedListPath[] = "/1541/_active_mount/dirty.lst";
 static const char kActiveListPath[] = "/1541/_active_mount/ACTIVE.LST";
 static const char kActiveListTmpPath[] = "/1541/_active_mount/ACTIVE.LST.tmp";
 
@@ -36,6 +37,14 @@ static unsigned g_pending_count = 0;
 static uint32_t g_pending_nonce = 0;
 
 static uint32_t g_nonce = 0;
+
+static constexpr unsigned kModifiedMax = 32;
+static char g_modified_display[kModifiedMax][64];
+static char g_modified_cached[kModifiedMax][256];
+static unsigned g_modified_count = 0;
+static uint32_t g_modified_id = 0;
+
+static uint32_t Crc32Update(uint32_t crc, const u8 *data, size_t len);
 
 static uint32_t MakeNonce(void)
 {
@@ -52,7 +61,8 @@ static bool ParseU32(const char *s, uint32_t *out)
 		return false;
 
 	char *end = nullptr;
-	unsigned long v = strtoul(s, &end, 10);
+	// Accept both decimal and hex (0x...) to match the prototype client/server behavior.
+	unsigned long v = strtoul(s, &end, 0);
 	if (end == s)
 		return false;
 	*out = static_cast<uint32_t>(v);
@@ -88,8 +98,174 @@ static void TrimLine(char *s)
 	size_t i = 0;
 	while (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')
 		++i;
-	if (i)
-		memmove(s, s + i, strlen(s + i) + 1);
+		if (i)
+			memmove(s, s + i, strlen(s + i) + 1);
+}
+
+static void BasenameOf(const char *path, char *out, size_t out_len)
+{
+	if (!out || out_len == 0)
+		return;
+	out[0] = '\0';
+	if (!path)
+		return;
+
+	const char *base = path;
+	for (const char *p = path; *p; ++p)
+	{
+		if (*p == '/' || *p == '\\')
+			base = p + 1;
+	}
+	snprintf(out, out_len, "%s", base);
+}
+
+static bool ReadModifiedListSummary(unsigned *out_count, uint32_t *out_crc)
+{
+	if (out_count)
+		*out_count = 0;
+	if (out_crc)
+		*out_crc = 0;
+
+	FIL fp;
+	if (f_open(&fp, kModifiedListPath, FA_READ) != FR_OK)
+		return false;
+
+	uint32_t crc = 0;
+	unsigned count = 0;
+	char line[512];
+	unsigned pos = 0;
+
+	UINT br = 0;
+	char ch = 0;
+	while (f_read(&fp, &ch, 1, &br) == FR_OK && br == 1)
+	{
+		crc = Crc32Update(crc, (const u8 *)&ch, 1);
+		if (ch == '\n')
+		{
+			line[pos] = '\0';
+			TrimLine(line);
+			if (line[0])
+				++count;
+			pos = 0;
+			continue;
+		}
+		if (pos + 1 < sizeof(line))
+			line[pos++] = ch;
+	}
+	if (pos)
+	{
+		line[pos] = '\0';
+		TrimLine(line);
+		if (line[0])
+			++count;
+	}
+	f_close(&fp);
+
+	if (out_count)
+		*out_count = count;
+	if (out_crc)
+		*out_crc = crc;
+	return true;
+}
+
+static bool PopulateModifiedListDirect(uint32_t crc)
+{
+	FIL fp;
+	if (f_open(&fp, kModifiedListPath, FA_READ) != FR_OK)
+		return false;
+
+	g_modified_count = 0;
+	g_modified_id = crc;
+	for (unsigned i = 0; i < kModifiedMax; ++i)
+	{
+		g_modified_display[i][0] = '\0';
+		g_modified_cached[i][0] = '\0';
+	}
+
+	char line[512];
+	unsigned pos = 0;
+	UINT br = 0;
+	char ch = 0;
+	while (f_read(&fp, &ch, 1, &br) == FR_OK && br == 1)
+	{
+		if (ch == '\r')
+			continue;
+		if (ch == '\n')
+		{
+			line[pos] = '\0';
+			TrimLine(line);
+			pos = 0;
+			if (!line[0] || g_modified_count >= kModifiedMax)
+				continue;
+
+			const char *src_path = line;
+			char src_full[512];
+			if (line[0] != '/')
+			{
+				if (strchr(line, '/') || strchr(line, '\\'))
+					snprintf(src_full, sizeof(src_full), "/%s", line);
+				else
+					snprintf(src_full, sizeof(src_full), "%s/%s", kActiveMountDir, line);
+				src_path = src_full;
+			}
+
+			char base[64];
+			BasenameOf(src_path, base, sizeof(base));
+			snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
+			snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+			++g_modified_count;
+			continue;
+		}
+		if (pos + 1 < sizeof(line))
+			line[pos++] = ch;
+	}
+
+	// Handle last line without newline.
+	if (pos && g_modified_count < kModifiedMax)
+	{
+		line[pos] = '\0';
+		TrimLine(line);
+		if (line[0])
+		{
+			const char *src_path = line;
+			char src_full[512];
+			if (line[0] != '/')
+			{
+				if (strchr(line, '/') || strchr(line, '\\'))
+					snprintf(src_full, sizeof(src_full), "/%s", line);
+				else
+					snprintf(src_full, sizeof(src_full), "%s/%s", kActiveMountDir, line);
+				src_path = src_full;
+			}
+
+			char base[64];
+			BasenameOf(src_path, base, sizeof(base));
+			snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
+			snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+			++g_modified_count;
+		}
+	}
+
+	f_close(&fp);
+	return g_modified_count != 0;
+}
+
+static bool EnsureModifiedListLoaded(void)
+{
+	unsigned count = 0;
+	uint32_t crc = 0;
+	if (!ReadModifiedListSummary(&count, &crc) || count == 0)
+	{
+		g_modified_count = 0;
+		g_modified_id = 0;
+		return false;
+	}
+
+	// If we already have the direct list for this exact dirty.lst, keep it.
+	if (g_modified_id == crc && g_modified_count == count)
+		return true;
+
+	return PopulateModifiedListDirect(crc);
 }
 
 static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
@@ -523,13 +699,83 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		if (method != HTTPRequestMethodGet)
 			return HTTPMethodNotImplemented;
 
+		unsigned modified_count = 0;
+		uint32_t modified_id = 0;
+		ReadModifiedListSummary(&modified_count, &modified_id);
+
 		// Keep prototype response shape to minimize frontend churn.
 		char response[256];
 		snprintf(response, sizeof(response),
-			 "{\"state\":\"READY\",\"nonce\":%u,\"tcp_port\":%u,\"caps\":[],\"modified_count\":0,\"modified_id\":0}",
+			 "{\"state\":\"READY\",\"nonce\":%u,\"tcp_port\":%u,\"caps\":[],\"modified_count\":%u,\"modified_id\":%u}",
 			 static_cast<unsigned>(g_nonce),
-			 static_cast<unsigned>(kServicePort));
+			 static_cast<unsigned>(kServicePort),
+			 modified_count,
+			 static_cast<unsigned>(modified_id));
 		return WriteJsonResult(pBuffer, pLength, response);
+	}
+
+	if (strcmp(pPath, "/modified/list") == 0 || strcmp(pPath, "/modified/list/") == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+
+		if (!EnsureModifiedListLoaded())
+			return WriteJsonResult(pBuffer, pLength, "{\"session\":\"\",\"count\":0,\"files\":[]}");
+
+		char response[4096];
+		unsigned off = 0;
+		off += snprintf(response + off, sizeof(response) - off,
+				"{\"session\":\"\",\"count\":%u,\"files\":[", g_modified_count);
+		for (unsigned i = 0; i < g_modified_count; ++i)
+		{
+			if (i)
+				off += snprintf(response + off, sizeof(response) - off, ",");
+			off += snprintf(response + off, sizeof(response) - off,
+					"{\"i\":%u,\"name\":\"%s\"}", i + 1, g_modified_display[i]);
+			if (off >= sizeof(response))
+				break;
+		}
+		off += snprintf(response + off, sizeof(response) - off, "]}");
+		return WriteJsonResult(pBuffer, pLength, response);
+	}
+
+	if (strncmp(pPath, "/modified/download/", 19) == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+
+		if (!EnsureModifiedListLoaded())
+			return HTTPNotFound;
+
+		const char *idx_text = pPath + 19;
+		unsigned idx = static_cast<unsigned>(atoi(idx_text));
+		if (idx == 0 || idx > g_modified_count)
+			return HTTPNotFound;
+
+		const char *file_path = g_modified_cached[idx - 1];
+		if (!file_path || !file_path[0])
+			return HTTPNotFound;
+
+		FIL fp;
+		if (f_open(&fp, file_path, FA_READ) != FR_OK)
+			return HTTPNotFound;
+
+		const unsigned cap = *pLength;
+		const FSIZE_t sz = f_size(&fp);
+		if (sz > cap)
+		{
+			f_close(&fp);
+			return HTTPRequestEntityTooLarge;
+		}
+		UINT br = 0;
+		FRESULT fr = f_read(&fp, pBuffer, cap, &br);
+		f_close(&fp);
+		if (fr != FR_OK)
+			return HTTPInternalServerError;
+
+		*ppContentType = "application/octet-stream";
+		*pLength = br;
+		return HTTPOK;
 	}
 
 	if (strcmp(pPath, "/upload/active") == 0 || strcmp(pPath, "/upload/active/") == 0)
