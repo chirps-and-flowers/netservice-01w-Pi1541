@@ -133,6 +133,7 @@ Modified disk downloads:
 ## Upload Headers
 
 Required:
+- `Content-Type: application/octet-stream` (uploads are raw bytes)
 - `X-Nonce`
 - `X-Image-Size` (decimal or `0x...`; must match body length)
 - `X-CRC32`      (decimal or `0x...`; CRC32 of body bytes)
@@ -140,6 +141,9 @@ Required:
 Optional:
 - `X-Image-Name` (suggested filename)
 - `X-Image-Type` (extension hint like `d64` or `.d64`)
+
+Tip: `curl --data-binary` defaults to `Content-Type: application/x-www-form-urlencoded`. For uploads,
+always send `Content-Type: application/octet-stream` or you will get `BAD_CONTENT_TYPE`.
 
 ## PUT vs POST (why both exist)
 

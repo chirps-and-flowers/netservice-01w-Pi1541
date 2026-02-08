@@ -637,12 +637,34 @@ static THTTPStatus WriteJsonError(u8 *pBuffer, unsigned *pLength, const char *er
 	return WriteJsonResult(pBuffer, pLength, temp);
 }
 
+static bool StartsWithI(const char *s, const char *prefix)
+{
+	if (!s || !prefix)
+		return false;
+	while (*prefix)
+	{
+		if (*s == '\0')
+			return false;
+		if (tolower(static_cast<unsigned char>(*s)) != tolower(static_cast<unsigned char>(*prefix)))
+			return false;
+		++s;
+		++prefix;
+	}
+	return true;
+}
+
 THTTPStatus CServiceHttpServer::HandleUpload(u8 *pBuffer, unsigned *pLength, bool append_list, bool mark_complete)
 {
 	const char *nonce_text = GetHeaderValue("X-Nonce");
 	uint32_t nonce = 0;
 	if (!ParseU32(nonce_text, &nonce) || nonce != g_nonce)
 		return WriteJsonError(pBuffer, pLength, "BAD_NONCE");
+
+	// Uploads must be raw bytes. Circle treats form/multipart differently and
+	// won't populate the raw request body buffer in those modes.
+	const char *ct = GetHeaderValue("Content-Type");
+	if (!ct || !ct[0] || !StartsWithI(ct, "application/octet-stream"))
+		return WriteJsonError(pBuffer, pLength, "BAD_CONTENT_TYPE");
 
 	unsigned body_len = 0;
 	const u8 *body = GetRawRequestBody(&body_len);
