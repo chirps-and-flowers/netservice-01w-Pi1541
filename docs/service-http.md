@@ -58,8 +58,19 @@ Frontend uploads:
     POST /upload/active/commit             (commit queue)
   |
   v
-Teardown / chainboot back to emulator kernel (TBD)
+Teardown: stop HTTP, clear OLED, reboot back to emulator kernel
 ```
+
+Note (future improvement):
+
+Today a successful commit requests teardown automatically. To avoid relying on a fixed
+"flush delay" before reboot, we can switch to an explicit handshake:
+
+- `POST /upload/active/commit` returns `{ok:true}` (no reboot)
+- frontend then calls `POST /teardown`
+- service replies `{ok:true}` and immediately reboots
+
+That removes guessing/waits, but requires a frontend change and one extra request.
 
 Upload/commit mechanics (SD staging + atomic manifests):
 
