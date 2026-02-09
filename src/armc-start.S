@@ -69,6 +69,7 @@
 .global _invalidate_dtlb
 .global _invalidate_dtlb_mva
 .global _data_memory_barrier
+.global _chainboot_to_address
 
 #ifdef HAS_MULTICORE
 .global _get_core
@@ -393,6 +394,54 @@ _data_memory_barrier:
 #endif
     mov      pc, lr
 
+    // Jump to a new kernel entry with MMU/caches/branch prediction disabled and VBAR reset.
+.section ".text._chainboot_to_address"
+_chainboot_to_address:
+    mov     r4, r0              // preserve entry address
+    // r0 = entry address
+    mrs     r1, cpsr
+    orr     r1, r1, #CPSR_IRQ_INHIBIT | CPSR_FIQ_INHIBIT
+    msr     cpsr_c, r1
+
+    mov     r2, #0
+
+    // Invalidate unified TLB
+    mcr     p15, 0, r2, c8, c7, 0
+
+    // Disable MMU, caches, branch prediction
+    mrc     p15, 0, r3, c1, c0, 0
+    bic     r3, r3, #1          // MMU
+    bic     r3, r3, #(1 << 2)   // Data cache
+    bic     r3, r3, #(1 << 11)  // Branch prediction
+    bic     r3, r3, #(1 << 12)  // Instruction cache
+    mcr     p15, 0, r3, c1, c0, 0
+
+    // Reset VBAR to zero
+    mcr     p15, 0, r2, c12, c0, 0
+
+#if defined(RPI2) || defined(RPI3)
+    dsb
+    isb
+#else
+    mcr     p15, 0, r2, c7, c10, 5    // data sync barrier
+    mcr     p15, 0, r2, c7, c5, 4     // instr sync barrier
+#endif
+
+    // Set boot-style args r0/r1/r2 like the original stub did.
+    mov     r0, #0
+    mov     r1, #0
+    mov     r2, #0x100
+
+#if defined(RPI2) || defined(RPI3)
+    dsb
+    isb
+#else
+    mcr     p15, 0, r2, c7, c10, 5
+    mcr     p15, 0, r2, c7, c5, 4
+#endif
+
+    mov     pc, r4
+
 #ifdef USE_MULTICORE
 
 _init_core:
@@ -507,4 +556,3 @@ _toggle_test_pin_loop:
         bne     _toggle_test_pin_loop
         mov     pc, lr
 #endif
-

@@ -158,16 +158,28 @@ build_pi1541() {
   echo "OK: ${OUT_DIR}/kernel_pi1541.img" >&2
 }
 
+# Legacy chainloader kernel ----------------------------------------------------
+build_chainloader() {
+  echo "chainloader kernel: building (legacy, RASPPI=0)" >&2
+  make chainloader-clean RASPPI=0 >/dev/null
+  make chainloader RASPPI=0 -j"$(jobs)" >/dev/null
+  [[ -f "${ROOT}/kernel_chainloader.img" ]] || die "chainloader kernel missing: ${ROOT}/kernel_chainloader.img"
+  cp -f "${ROOT}/kernel_chainloader.img" "${OUT_DIR}/kernel_chainloader.img"
+  echo "OK: ${OUT_DIR}/kernel_chainloader.img" >&2
+}
+
 case "$MODE" in
   both)
     build_service
     build_pi1541
+    build_chainloader
     ;;
   service)
     build_service
     ;;
   pi1541)
     build_pi1541
+    build_chainloader
     ;;
   *)
     die "internal: unknown MODE=$MODE"
@@ -175,7 +187,7 @@ case "$MODE" in
 esac
 
 echo "Artifacts in ${OUT_DIR}:" >&2
-for f in kernel_pi1541.img kernel_service.img; do
+for f in kernel_pi1541.img kernel_chainloader.img kernel_service.img; do
   [[ -f "${OUT_DIR}/${f}" ]] || continue
   ls -lh "${OUT_DIR}/${f}" >&2
 done

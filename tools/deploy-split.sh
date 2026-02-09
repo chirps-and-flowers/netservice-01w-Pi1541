@@ -7,6 +7,7 @@ set -euo pipefail
 # - install the built kernels:
 #     build/out/kernel_pi1541.img  -> SD:/kernel.img
 #     build/out/kernel_service.img -> SD:/kernel_srv.img
+#     build/out/kernel_chainloader.img  -> SD:/kernel_chainloader.img
 # - optionally select which kernel [pi0] boots via SD:/config.txt
 #
 # Usage:
@@ -38,14 +39,17 @@ OUT_DIR="${ROOT}/build/out"
 
 EMU_SRC="${OUT_DIR}/kernel_pi1541.img"
 SRV_SRC="${OUT_DIR}/kernel_service.img"
+CHAINLOADER_SRC="${OUT_DIR}/kernel_chainloader.img"
 
 EMU_DEST="${SD_MOUNT}/kernel.img"
 SRV_DEST="${SD_MOUNT}/kernel_srv.img"
+CHAINLOADER_DEST="${SD_MOUNT}/kernel_chainloader.img"
 CFG_DEST="${SD_MOUNT}/config.txt"
 
 [[ -d "${SD_MOUNT}" ]] || { echo "ERROR: SD mount point not found: ${SD_MOUNT}" >&2; exit 1; }
 [[ -f "${EMU_SRC}" ]] || { echo "ERROR: missing emu kernel: ${EMU_SRC}" >&2; exit 1; }
 [[ -f "${SRV_SRC}" ]] || { echo "ERROR: missing service kernel: ${SRV_SRC}" >&2; exit 1; }
+[[ -f "${CHAINLOADER_SRC}" ]] || { echo "ERROR: missing chainloader kernel: ${CHAINLOADER_SRC}" >&2; exit 1; }
 CFG_BASE="${CFG_DEST}"
 if [[ ! -f "${CFG_DEST}" ]]; then
   # Recover from a partial deploy (or user customizations) by using the newest backup as base.
@@ -67,13 +71,16 @@ echo "== Deploy split kernels to ${SD_MOUNT} ==" >&2
 
 backup_file "${EMU_DEST}"
 backup_file "${SRV_DEST}"
+backup_file "${CHAINLOADER_DEST}"
 
 cp -f "${EMU_SRC}" "${EMU_DEST}"
 cp -f "${SRV_SRC}" "${SRV_DEST}"
+cp -f "${CHAINLOADER_SRC}" "${CHAINLOADER_DEST}"
 
 echo "Installed:" >&2
 echo "  emu     -> ${EMU_DEST} ($(stat -c %s "${EMU_DEST}") bytes)" >&2
 echo "  service -> ${SRV_DEST} ($(stat -c %s "${SRV_DEST}") bytes)" >&2
+echo "  chainld -> ${CHAINLOADER_DEST} ($(stat -c %s "${CHAINLOADER_DEST}") bytes)" >&2
 
 echo "Boot mode: ${BOOT_MODE}" >&2
 

@@ -67,6 +67,10 @@ extern "C"
 #include "ScreenLCD.h"
 #include "ScreenHeadless.h"
 
+#if !defined(__CIRCLE__) && !defined(__PICO2__) && !defined(ESP32)
+#include "chainboot_helper_stub.h"
+#endif
+
 #include "logo.h"
 #include "ssd_logo.h"
 #include "version.h"
@@ -1074,7 +1078,8 @@ EXIT_TYPE __not_in_flash_func(Emulate1541) (FileBrowser* fileBrowser)
 #endif
 		inputMappings->CheckButtonsEmulationMode();
 
-		bool exitEmulation = inputMappings->Exit();
+		const bool serviceRequested = inputMappings->ServiceRequested();
+		bool exitEmulation = inputMappings->Exit() || serviceRequested;
 		bool exitDoAutoLoad = inputMappings->AutoLoad();
 
 		// We have now output so HERE is where the next phi2 cycle starts.
@@ -1108,7 +1113,7 @@ extern int mount_new;
 			if (reset)
 				exitReason = EXIT_RESET;
 			if (exitEmulation)
-				exitReason = EXIT_KEYBOARD;
+				exitReason = serviceRequested ? EXIT_SERVICE : EXIT_KEYBOARD;
 			if (exitDoAutoLoad)
 				exitReason = EXIT_AUTOLOAD;
 		}
@@ -1341,7 +1346,8 @@ EXIT_TYPE Emulate1581(FileBrowser* fileBrowser)
 #endif
 		inputMappings->CheckButtonsEmulationMode();
 
-		bool exitEmulation = inputMappings->Exit();
+		const bool serviceRequested = inputMappings->ServiceRequested();
+		bool exitEmulation = inputMappings->Exit() || serviceRequested;
 		bool exitDoAutoLoad = inputMappings->AutoLoad();
 
 
@@ -1372,7 +1378,7 @@ EXIT_TYPE Emulate1581(FileBrowser* fileBrowser)
 			if (reset)
 				exitReason = EXIT_RESET;
 			if (exitEmulation)
-				exitReason = EXIT_KEYBOARD;
+				exitReason = serviceRequested ? EXIT_SERVICE : EXIT_KEYBOARD;
 			if (exitDoAutoLoad)
 				exitReason = EXIT_AUTOLOAD;
 		}
@@ -1705,6 +1711,24 @@ extern int mount_new;
 	
 			if ((exitReason == EXIT_RESET) && (options.GetOnResetChangeToStartingFolder() || selectedViaIECCommands))
 				fileBrowser->DisplayRoot(); // TO CHECK
+
+#if !defined(__CIRCLE__) && !defined(__PICO2__) && !defined(ESP32)
+			if (exitReason == EXIT_SERVICE)
+			{
+				if (screenLCD)
+				{
+					const char *msg = "MINI SERVICE";
+					screenLCD->Clear(0);
+					int x = (int)(screenLCD->Width() - (screenLCD->GetFontWidth() * strlen(msg))) / 2;
+					if (x < 0) x = 0;
+					int y = (int)(screenLCD->Height() - screenLCD->GetFontHeight()) / 2;
+					if (y < 0) y = 0;
+					screenLCD->PrintText(false, (u32)x, (u32)y, (char*)msg);
+					screenLCD->RefreshScreen();
+				}
+				ChainBootChainloader("/kernel_chainloader.img");
+			}
+#endif
 
 			inputMappings->WaitForClearButtons();
 

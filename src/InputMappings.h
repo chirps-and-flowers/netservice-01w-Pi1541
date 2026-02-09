@@ -47,6 +47,7 @@
 #define END_FLAG		(1 << 20)
 
 #define FUNCTION_FLAG		(1 << 21)
+#define SERVICE_FLAG		(1 << 22)	// netservice-01w: long-press ENTER triggers service chainboot
 // dont exceed 32!!
 
 
@@ -65,6 +66,11 @@ protected:
 
 	bool enterButtonPressedPrev;
 	bool enterButtonPressed;
+	bool enterButtonHoldConsumed;
+	unsigned enterButtonHoldCounter;
+	bool downButtonPressedPrev;
+	bool downButtonHoldConsumed;
+	unsigned downButtonHoldCounter;
 
 	unsigned keyboardNumLetter;
 	unsigned inputROMOrDevice;
@@ -97,6 +103,12 @@ public:
 	{
 		keyboardFlags = 0;
 		buttonFlags = 0;
+		enterButtonHoldConsumed = false;
+		downButtonHoldConsumed = false;
+		enterButtonHoldCounter = 0;
+		downButtonHoldCounter = 0;
+		downButtonPressedPrev = false;
+		enterButtonPressedPrev = false;
 	}
 
 	void SetKeyboardBrowseLCDScreen(bool value)
@@ -186,6 +198,11 @@ public:
 		return KeyboardFlag(FUNCTION_FLAG) | ButtonFlag(FUNCTION_FLAG);
 	}
 
+	inline bool ServiceRequested()
+	{
+		return ButtonFlag(SERVICE_FLAG);
+	}
+
 	inline bool BrowseNewD64() { return KeyboardFlag(NEWD64_FLAG); }
 
 	inline bool BrowseAutoLoad() { return KeyboardFlag(AUTOLOAD_FLAG); }
@@ -211,4 +228,3 @@ public:
 //	static unsigned escapeSequenceIndex;
 };
 #endif
-
