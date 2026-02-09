@@ -48,6 +48,11 @@ InputMappings::InputMappings()
 	, insertButtonPressed(false)
 	, enterButtonPressedPrev(false)
 	, enterButtonPressed(false)
+	, enterButtonHoldConsumed(false)
+	, enterButtonHoldCounter(0)
+	, downButtonPressedPrev(false)
+	, downButtonHoldConsumed(false)
+	, downButtonHoldCounter(0)
 {
 }
 
@@ -130,6 +135,10 @@ bool InputMappings::CheckButtonsBrowseMode()
 void InputMappings::WaitForClearButtons()
 {
 	buttonFlags = 0;
+	enterButtonHoldConsumed = false;
+	downButtonHoldConsumed = false;
+	enterButtonHoldCounter = 0;
+	downButtonHoldCounter = 0;
 
 	do
 	{
@@ -149,20 +158,55 @@ void InputMappings::CheckButtonsEmulationMode()
 {
 	buttonFlags = 0;
 
-	if (IEC_Bus::GetInputButtonRepeating(INPUT_BUTTON_UP))
-		SetButtonFlag(NEXT_FLAG);
-	else if (IEC_Bus::GetInputButtonRepeating(INPUT_BUTTON_DOWN))
-		SetButtonFlag(PREV_FLAG);
-	//else if (IEC_Bus::GetInputButtonPressed(INPUT_BUTTON_BACK))
-	//	SetButtonFlag(BACK_FLAG);
-	//else if (IEC_Bus::GetInputButtonPressed(INPUT_BUTTON_INSERT))
-	//	SetButtonFlag(INSERT_FLAG);
-	else {
-		enterButtonPressed = !IEC_Bus::GetInputButtonReleased(INPUT_BUTTON_ENTER);
-		if (enterButtonPressedPrev && !enterButtonPressed)
-			SetButtonFlag(ESC_FLAG);
-		enterButtonPressedPrev = enterButtonPressed;
+	// Keep the emulation hot path minimal and deterministic:
+	// - poll button "released" state (no repeat acceleration)
+	// - use loop-count holds for short/long actions
+	static const unsigned kHoldCycles = 800000; // ~0.80s at ~1MHz loop
+	const bool downPressed = !IEC_Bus::GetInputButtonReleased(INPUT_BUTTON_DOWN);
+	const bool enterPressed = !IEC_Bus::GetInputButtonReleased(INPUT_BUTTON_ENTER);
+
+	if (downPressed)
+	{
+		if (!downButtonHoldConsumed && ++downButtonHoldCounter >= kHoldCycles)
+		{
+			SetButtonFlag(NEXT_FLAG);
+			downButtonHoldConsumed = true;
+		}
 	}
+	else if (downButtonPressedPrev)
+	{
+		if (!downButtonHoldConsumed)
+			SetButtonFlag(PREV_FLAG);
+		downButtonHoldConsumed = false;
+		downButtonHoldCounter = 0;
+	}
+	else
+	{
+		downButtonHoldCounter = 0;
+	}
+	downButtonPressedPrev = downPressed;
+
+	if (enterPressed)
+	{
+		if (!enterButtonHoldConsumed && ++enterButtonHoldCounter >= kHoldCycles)
+		{
+			SetButtonFlag(SERVICE_FLAG);
+			enterButtonHoldConsumed = true;
+		}
+	}
+	else if (enterButtonPressedPrev)
+	{
+		if (!enterButtonHoldConsumed)
+			SetButtonFlag(ESC_FLAG);
+		enterButtonHoldConsumed = false;
+		enterButtonHoldCounter = 0;
+	}
+	else
+	{
+		enterButtonHoldCounter = 0;
+	}
+
+	enterButtonPressedPrev = enterPressed;
 }
 
 
@@ -360,4 +404,3 @@ void InputMappings::CheckKeyboardEmulationMode(unsigned numberOfImages, unsigned
 	}
 #endif
 }
-

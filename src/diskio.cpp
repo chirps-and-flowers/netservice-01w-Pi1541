@@ -14,17 +14,25 @@
 #if !defined(ESP32)
 extern "C"
 {
+#if !defined(PI1541_CHAINBOOT_HELPER)
+// netservice-01w: Chainloader build excludes USB mass storage to keep the
+// stage-2 payload small and avoid linking uspi into the chainboot path.
 #include <uspi.h>
 #include <uspi/usbmassdevice.h>
+#endif
 }
 
 /* Definitions of physical drive number for each drive */
 #define DEV_MMC		0	/* Example: Map MMC/SD card to physical drive 0 */
+#if !defined(PI1541_CHAINBOOT_HELPER)
 #define DEV_USB		1
+#endif
 
 //static struct emmc_block_dev *emmc_dev;
 static CEMMCDevice* pEMMC;
+#if !defined(PI1541_CHAINBOOT_HELPER)
 static int USBDeviceIndex = -1;
+#endif
 
 
 void disk_setEMM(CEMMCDevice* pEMMCDevice)
@@ -32,10 +40,12 @@ void disk_setEMM(CEMMCDevice* pEMMCDevice)
 	pEMMC = pEMMCDevice;
 }
 
+#if !defined(PI1541_CHAINBOOT_HELPER)
 void disk_setUSB(unsigned deviceIndex)
 {
 	USBDeviceIndex = (int)deviceIndex;
 }
+#endif
 
 
 int sd_card_init(struct block_device **dev)
@@ -211,7 +221,7 @@ DRESULT disk_read (
 		}
 		return RES_OK;
 	}
-#if !defined(ESP32)	
+#if !defined(PI1541_CHAINBOOT_HELPER) && !defined(ESP32)
 	else
 	{
 		unsigned bytes = (unsigned)USPiMassStorageDeviceRead((unsigned long long )(sector << UMSD_BLOCK_SHIFT), buff, count << UMSD_BLOCK_SHIFT, pdrv - 1);
@@ -252,7 +262,7 @@ DRESULT disk_write (
 		}
 		return RES_OK;
 	}
-#if !defined(ESP32)	
+#if !defined(PI1541_CHAINBOOT_HELPER) && !defined(ESP32)
 	else
 	{
 		unsigned bytes = (unsigned)USPiMassStorageDeviceWrite(sector << UMSD_BLOCK_SHIFT, buff, count << UMSD_BLOCK_SHIFT, pdrv - 1);
@@ -304,4 +314,3 @@ DRESULT disk_ioctl (
 
 	return RES_PARERR;
 }
-

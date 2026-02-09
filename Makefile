@@ -38,9 +38,19 @@
 CIRCLEBASE ?= ../circle-stdlib
 CIRCLEHOME ?= $(CIRCLEBASE)/libs/circle
 
+PI1541_CHAINBOOT_ENABLE ?= 1
+
 LEGACY_OBJS = 	armc-start.o armc-cstartup.o armc-cstubs.o armc-cppstubs.o emmc.o ff.o \
 			cache.o exception.o performance.o SpinLock.o rpi-interrupts.o Timer.o diskio.o \
 			interrupt.o rpi-aux.o  rpi-i2c.o rpi-mailbox-interface.o rpi-mailbox.o rpi-gpio.o
+
+# Minimal chainboot chainloader (loaded by the legacy emulator kernel into RAM,
+# then loads kernel_srv.* into 0x8000 and jumps there).
+CHAINLOADER_OBJS = armc-start.o armc-cstartup.o armc-cstubs.o armc-cppstubs.o emmc.o ff.o \
+			cache.o exception.o performance.o SpinLock.o rpi-interrupts.o Timer.o diskio.o \
+			interrupt.o rpi-aux.o rpi-i2c.o rpi-mailbox-interface.o rpi-mailbox.o rpi-gpio.o \
+			lz4_legacy.o chainboot_legacy.o chainboot_helper.o
+CHAINLOADER_VENDOR_OBJS = vendors/lz4/lz4.o
 
 CIRCLE_OBJS = 	circle-main.o circle-kernel.o webserver.o legacy-wrappers.o logger.o #circle-hmi.o 
 
@@ -50,10 +60,15 @@ COMMON_OBJS = 	main.o Drive.o Pi1541.o DiskImage.o iec_bus.o iec_commands.o m650
 		m8520.o wd177x.o Pi1581.o Keyboard.o dmRotary.o SSD1306.o
 SRCDIR   = src
 OBJS_CIRCLE  := $(addprefix $(SRCDIR)/, $(CIRCLE_OBJS) $(COMMON_OBJS))
-OBJS_LEGACY  := $(addprefix $(SRCDIR)/, $(LEGACY_OBJS) $(COMMON_OBJS))
+LEGACY_COLD_OBJS =
+ifeq ($(PI1541_CHAINBOOT_ENABLE),1)
+LEGACY_COLD_OBJS += chainboot_helper_stub.o
+endif
+OBJS_LEGACY  := $(addprefix $(SRCDIR)/, $(LEGACY_OBJS) $(COMMON_OBJS) $(LEGACY_COLD_OBJS))
+OBJS_CHAINLOADER  := $(addprefix $(SRCDIR)/, $(CHAINLOADER_OBJS)) $(CHAINLOADER_VENDOR_OBJS)
 
 LIBS     = uspi/libuspi.a
-INCLUDE  = -Iuspi/include/
+INCLUDE  = -Iuspi/include/ -Ivendors/lz4 -I$(CURDIR)
 
 ifeq ($(RASPPI),)
 include $(CIRCLEHOME)/Config.mk
@@ -92,12 +107,27 @@ else
 include Makefile.rules
 endif
 
+ifneq ($(filter chainloader,$(MAKECMDGOALS)),)
+CFLAGS += -DPI1541_CHAINBOOT_HELPER=1
+CPPFLAGS += -DPI1541_CHAINBOOT_HELPER=1
+endif
+
 TARGET ?= kernel
-.PHONY: all $(LIBS)
+CHAINLOADER_TARGET ?= kernel_chainloader
+.PHONY: all $(LIBS) chainloader-clean
 
 all: webcontent $(TARGET_CIRCLE)
 
 legacy: $(TARGET)
+
+chainloader: version $(OBJS_CHAINLOADER)
+	@echo "  LINK $(CHAINLOADER_TARGET)"
+	$(Q)$(CC) $(CFLAGS) -DPI1541_CHAINBOOT_HELPER=1 -o $(CHAINLOADER_TARGET).elf -Xlinker -Map=$(CHAINLOADER_TARGET).map -T linker-helper.ld -nostartfiles $(OBJS_CHAINLOADER)
+	$(Q)$(PREFIX)objdump -d $(CHAINLOADER_TARGET).elf | $(PREFIX)c++filt > $(CHAINLOADER_TARGET).lst
+	$(Q)$(PREFIX)objcopy $(CHAINLOADER_TARGET).elf -O binary $(CHAINLOADER_TARGET).img
+
+chainloader-clean:
+	$(Q)$(RM) $(OBJS_CHAINLOADER)
 
 webcontent:
 	$(MAKE) -C $(SRCDIR)/webcontent all
@@ -120,7 +150,8 @@ uspi/libuspi.a:
 	$(MAKE) -C uspi
 
 clean:
-	$(Q)$(RM) $(OBJS_LEGACY) $(OBJS_CIRCLE) $(TARGET).elf $(TARGET).map $(TARGET).lst $(TARGET).img $(TARGET_CIRCLE) *.img
+	$(Q)$(RM) $(OBJS_LEGACY) $(OBJS_CIRCLE) $(OBJS_CHAINLOADER) $(TARGET).elf $(TARGET).map $(TARGET).lst $(TARGET).img $(TARGET_CIRCLE) *.img
+	$(Q)$(RM) $(CHAINLOADER_TARGET).elf $(CHAINLOADER_TARGET).map $(CHAINLOADER_TARGET).lst $(CHAINLOADER_TARGET).img
 	$(MAKE) -C uspi clean
 	$(MAKE) -C $(SRCDIR) -f Makefile.circle clean 2>/dev/null || true
 	$(MAKE) -C $(SRCDIR)/webcontent -f Makefile clean

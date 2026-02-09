@@ -36,6 +36,9 @@ extern void _invalidate_dtlb_mva(void *address);
 
 extern void _data_memory_barrier();
 
+// Jump to the given address with MMU/caches/branch prediction disabled and VBAR reset.
+extern void _chainboot_to_address(void *entry);
+
 extern unsigned int _get_core();
 
 extern void _init_core();
