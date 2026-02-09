@@ -15,6 +15,11 @@ public:
 	explicit CServiceHttpServer(CNetSubSystem *pNetSubSystem, CSocket *pSocket = nullptr);
 	~CServiceHttpServer(void) override;
 
+	// Teardown is requested after a successful upload+commit so the service kernel
+	// can stop serving and reboot back into the emulator kernel.
+	static void RequestTeardown(void);
+	static bool IsTeardownRequested(void);
+
 	CHTTPDaemon *CreateWorker(CNetSubSystem *pNetSubSystem, CSocket *pSocket) override;
 
 	THTTPStatus GetContent(const char *pPath,

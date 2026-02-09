@@ -212,13 +212,35 @@ void service_init(void)
 	}
 }
 
-void service_run(void)
+bool service_run(void)
 {
 	Kernel.log("service: run");
 	ServiceEnsureLCD();
 
 	for (;;)
 	{
-		Kernel.get_scheduler()->MsSleep(250);
+		if (CServiceHttpServer::IsTeardownRequested())
+		{
+			// Stop accepting new HTTP connections, clear the OLED, then give the
+			// commit response a short moment to flush before reboot.
+			if (g_http_server)
+			{
+				g_http_server->RequestStop();
+			}
+
+			// Clear the OLED right before reboot so we don't leave stale service UI.
+			if (g_screenLCD)
+			{
+				g_screenLCD->Clear(0);
+				g_screenLCD->RefreshScreen();
+			}
+
+			Kernel.get_scheduler()->MsSleep(150);
+			return true;
+		}
+
+		Kernel.get_scheduler()->MsSleep(50);
 	}
+
+	return false;
 }

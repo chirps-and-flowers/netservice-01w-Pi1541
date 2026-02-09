@@ -1,8 +1,6 @@
-// service/service.h - service-kernel "application" entrypoints
+// service/service.h - service-kernel app entrypoints.
 //
-// This code is linked into the Circle "service" kernel only (not the emulator
-// kernel). It owns the service-mode state machine (network bringup + control
-// plane) and uses a narrow platform surface provided by the service kernel.
+// See docs/service-http.md for the HTTP control plane contract.
 
 #ifndef NETSERVICE_SERVICE_APP_H
 #define NETSERVICE_SERVICE_APP_H
@@ -10,8 +8,8 @@
 // Initialize service-mode state (options, display, etc).
 void service_init(void);
 
-// Run the service loop (does not normally return).
-void service_run(void);
+// Run the service loop. Returns true if a reboot back to the emulator kernel
+// was requested.
+bool service_run(void);
 
 #endif
-

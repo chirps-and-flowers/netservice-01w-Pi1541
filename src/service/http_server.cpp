@@ -38,6 +38,7 @@ static unsigned g_pending_count = 0;
 static uint32_t g_pending_nonce = 0;
 
 static uint32_t g_nonce = 0;
+static volatile bool g_teardown_requested = false;
 
 static constexpr unsigned kModifiedMax = 32;
 static char g_modified_display[kModifiedMax][64];
@@ -769,12 +770,19 @@ THTTPStatus CServiceHttpServer::HandleUpload(u8 *pBuffer, unsigned *pLength, boo
 	{
 		if (!CommitPendingUploads())
 			return WriteJsonError(pBuffer, pLength, "FS_COMMIT");
+
+		// Current behavior: successful commit requests teardown automatically.
+		// Future option: keep commit non-rebooting (return {ok:true}) and add an
+		// explicit `POST /teardown` call from the frontend to reboot immediately
+		// after the response is received.
+		CServiceHttpServer::RequestTeardown();
 	}
 
 	char response[256];
+	const char *rebooting = mark_complete ? "true" : "false";
 	snprintf(response, sizeof(response),
-		 "{\"ok\":true,\"name\":\"%s\",\"size\":%u,\"crc32\":\"%08x\"}",
-		 name, body_len, static_cast<unsigned>(crc));
+		 "{\"ok\":true,\"name\":\"%s\",\"size\":%u,\"crc32\":\"%08x\",\"rebooting\":%s}",
+		 name, body_len, static_cast<unsigned>(crc), rebooting);
 	return WriteJsonResult(pBuffer, pLength, response);
 }
 
@@ -789,6 +797,16 @@ CServiceHttpServer::CServiceHttpServer(CNetSubSystem *pNetSubSystem, CSocket *pS
 }
 
 CServiceHttpServer::~CServiceHttpServer(void) = default;
+
+void CServiceHttpServer::RequestTeardown(void)
+{
+	g_teardown_requested = true;
+}
+
+bool CServiceHttpServer::IsTeardownRequested(void)
+{
+	return g_teardown_requested;
+}
 
 CHTTPDaemon *CServiceHttpServer::CreateWorker(CNetSubSystem *pNetSubSystem, CSocket *pSocket)
 {
@@ -936,7 +954,9 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		if (!CommitPendingUploads())
 			return WriteJsonError(pBuffer, pLength, "FS_COMMIT");
 
-		return WriteJsonResult(pBuffer, pLength, "{\"ok\":true,\"committed\":true}");
+		// See note above: commit currently requests teardown automatically.
+		CServiceHttpServer::RequestTeardown();
+		return WriteJsonResult(pBuffer, pLength, "{\"ok\":true,\"committed\":true,\"rebooting\":true}");
 	}
 
 	if (strcmp(pPath, "/active/list") == 0 || strcmp(pPath, "/active/list/") == 0)

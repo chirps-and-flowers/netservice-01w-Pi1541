@@ -85,7 +85,7 @@ boolean CServiceKernel::wifi_start(void)
 		m_Net = nullptr;
 	}
 
-	// NOTE: For S3 we always use DHCP. Static IPv4 support comes in S4.
+	// Service kernel uses DHCP (static IPv4 not implemented).
 	m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
 	if (!m_Net)
 	{
@@ -109,8 +109,7 @@ boolean CServiceKernel::wifi_start(void)
 TShutdownMode CServiceKernel::Run(void)
 {
 	service_init();
-	service_run();
+	const bool want_reboot = service_run();
 
-	// service_run is expected to loop forever.
-	return ShutdownHalt;
+	return want_reboot ? ShutdownReboot : ShutdownHalt;
 }
