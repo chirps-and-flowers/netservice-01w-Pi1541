@@ -159,6 +159,33 @@ u16 pc;
 u32 clockCycles1MHz;
 #endif
 
+static const char* kActiveMountDir = "/1541/_active_mount";
+static const char* kActiveListName = "ACTIVE.LST";
+static const char* kActiveListPath = "/1541/_active_mount/ACTIVE.LST";
+static const unsigned kActiveMaxImages = 16;
+static FILINFO* g_activeFileInfos[kActiveMaxImages];
+static unsigned g_activeFileInfoCount = 0;
+
+// Active set contract: service kernel writes /1541/_active_mount/ACTIVE.LST (+ files).
+// Emulator reads it once at cold boot to auto-enter emulation.
+static void ClearActiveFileInfos(void)
+{
+	for (unsigned i = 0; i < g_activeFileInfoCount; ++i)
+		delete g_activeFileInfos[i];
+	g_activeFileInfoCount = 0;
+}
+
+static FILINFO* CopyActiveFileInfo(const FILINFO* src)
+{
+	// DiskImage/DiskCaddy retain FILINFO*; heap-copy to keep pointers valid.
+	if (g_activeFileInfoCount >= kActiveMaxImages || !src)
+		return 0;
+	FILINFO* copy = new FILINFO;
+	memcpy(copy, src, sizeof(*copy));
+	g_activeFileInfos[g_activeFileInfoCount++] = copy;
+	return copy;
+}
+
 #if defined(__CIRCLE__)
 // Circle has its own spinlock primitive; don't mix it with the legacy SpinLock.
 CSpinLock core0RefreshingScreen;
@@ -832,6 +859,110 @@ EmulatingMode BeginEmulating(FileBrowser* fileBrowser, const char* filenameForIc
 	inputMappings->WaitForClearButtons();
 	return IEC_COMMANDS;
 }
+
+static bool LoadActiveSetFromList(char* firstImageName, size_t firstImageNameLen)
+{
+	static char listBuffer[4096];
+	FIL fp;
+	FRESULT res;
+	UINT bytesRead = 0;
+	bool anyMounted = false;
+
+	if (firstImageNameLen)
+		firstImageName[0] = '\0';
+
+	res = f_chdir(kActiveMountDir);
+	if (res != FR_OK)
+	{
+		DEBUG_LOG("%s: missing dir '%s' (%d)\r\n", __FUNCTION__, kActiveMountDir, (int)res);
+		return false;
+	}
+
+	res = f_open(&fp, kActiveListName, FA_READ);
+	if (res != FR_OK)
+	{
+		DEBUG_LOG("%s: missing '%s' (%d)\r\n", __FUNCTION__, kActiveListName, (int)res);
+		return false;
+	}
+
+	res = f_read(&fp, listBuffer, sizeof(listBuffer) - 1, &bytesRead);
+	f_close(&fp);
+	if (res != FR_OK || bytesRead == 0)
+	{
+		DEBUG_LOG("%s: failed to read '%s' (%d)\r\n", __FUNCTION__, kActiveListName, (int)res);
+		return false;
+	}
+	listBuffer[bytesRead] = '\0';
+
+	TextParser parser;
+	parser.SetData(listBuffer);
+	for (char* token = parser.GetToken(true); token != 0; token = parser.GetToken(true))
+	{
+		if (token[0] == '\0')
+			continue;
+
+		DiskImage::DiskType diskType = DiskImage::GetDiskImageTypeViaExtention(token);
+		if (diskType == DiskImage::NONE)
+		{
+			roms.SelectROM(token);
+			continue;
+		}
+		if (diskType == DiskImage::LST)
+			continue;
+
+		FILINFO fi;
+		memset(&fi, 0, sizeof(fi));
+		res = f_stat(token, &fi);
+		if (res != FR_OK)
+		{
+			DEBUG_LOG("%s: missing image '%s' (%d)\r\n", __FUNCTION__, token, (int)res);
+			continue;
+		}
+		strncpy(fi.fname, token, sizeof(fi.fname) - 1);
+		fi.fname[sizeof(fi.fname) - 1] = '\0';
+
+		bool readOnly = (fi.fattrib & AM_RDO) != 0;
+		FILINFO* copy = CopyActiveFileInfo(&fi);
+		if (!copy)
+		{
+			DEBUG_LOG("%s: active set full (%u)\r\n", __FUNCTION__, g_activeFileInfoCount);
+			break;
+		}
+		if (diskCaddy.Insert(copy, readOnly))
+		{
+			if (!anyMounted && firstImageNameLen)
+			{
+				strncpy(firstImageName, token, firstImageNameLen - 1);
+				firstImageName[firstImageNameLen - 1] = '\0';
+			}
+			anyMounted = true;
+		}
+		else
+		{
+			delete copy;
+			g_activeFileInfoCount--;
+			g_activeFileInfos[g_activeFileInfoCount] = 0;
+		}
+	}
+
+	return anyMounted;
+}
+
+static EmulatingMode MountActiveSet(FileBrowser* fileBrowser)
+{
+	char firstImageName[256];
+
+	if (diskCaddy.GetNumberOfImages() != 0)
+		diskCaddy.Empty();
+	ClearActiveFileInfos();
+
+	roms.ResetCurrentROMIndex();
+	if (!LoadActiveSetFromList(firstImageName, sizeof(firstImageName)))
+		return IEC_COMMANDS;
+
+	inputMappings->Reset();
+	return BeginEmulating(fileBrowser, firstImageName[0] ? firstImageName : "");
+}
 #if !defined (__CIRCLE__)
 #if not defined(EXPERIMENTALZERO)
 static u32* dmaSound;
@@ -1485,6 +1616,13 @@ void __not_in_flash_func(emulator)(void)
 	_m_IEC_Commands->SetCDSlashSlashToRoot(options.CDSlashSlashToRoot() != 0);
 
 	emulating = IEC_COMMANDS;
+	// Only auto-mount ACTIVE.LST at boot. After the user exits emulation, stay in the
+	// browser/menu instead of immediately re-mounting back into emulation.
+	{
+		EmulatingMode maybe = MountActiveSet(fileBrowser);
+		if (maybe != IEC_COMMANDS)
+			emulating = maybe;
+	}
 	while (1)
 	{
 		if (emulating == IEC_COMMANDS)
@@ -1707,6 +1845,7 @@ extern int mount_new;
 			if (diskCaddy.Empty())
 				IEC_Bus::WaitMicroSeconds(2 * 1000000);
 			IEC_Bus::WaitUntilReset();
+			ClearActiveFileInfos();
 			emulating = IEC_COMMANDS;
 	
 			if ((exitReason == EXIT_RESET) && (options.GetOnResetChangeToStartingFolder() || selectedViaIECCommands))
