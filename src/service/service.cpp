@@ -46,6 +46,36 @@ static void ServiceShow2(const char *line0, const char *line1)
 	g_screenLCD->RefreshScreen();
 }
 
+static void ServiceDrawReadyScreen(const char *ip_line)
+{
+	if (!g_screenLCD)
+	{
+		return;
+	}
+
+	RGBA bk = RGBA(0, 0, 0, 0xFF);
+	const u32 fh = g_screenLCD->GetFontHeight();
+
+	// Match the old working layout:
+	//   MINI SERVICE
+	//   IP: ...
+	//   PORT: <port>   (only if the LCD has room for 3 rows at this font height)
+	char portLine[32];
+	snprintf(portLine, sizeof(portLine), "PORT: %u", static_cast<unsigned>(kServiceHttpPort));
+
+	g_screenLCD->Clear(bk);
+	g_screenLCD->PrintText(false, 0, 0 * fh, (char *) "MINI SERVICE", 0, bk);
+	if (ip_line)
+	{
+		g_screenLCD->PrintText(false, 0, 1 * fh, (char *) ip_line, 0, bk);
+	}
+	if (g_screenLCD->Height() >= fh * 3)
+	{
+		g_screenLCD->PrintText(false, 0, 2 * fh, portLine, 0, bk);
+	}
+	g_screenLCD->SwapBuffers();
+}
+
 static void ServiceLoadOptions(void)
 {
 	FIL fp;
@@ -161,9 +191,8 @@ void service_init(void)
 		return;
 	}
 
-	// Association can take a bit. For S3 we only prove the SDIO/WLAN path is stable.
-	// DHCP/IP display comes in the next slice.
-	ServiceShow2("MINI SERVICE", "JOINING");
+	// Show READY-style screen while associating and waiting for DHCP.
+	ServiceDrawReadyScreen("IP: (joining)");
 	for (unsigned i = 0; i < 150; ++i) // ~15s
 	{
 		if (Kernel.wifi_is_connected())
@@ -187,19 +216,28 @@ void service_init(void)
 		return;
 	}
 
-	ServiceShow2("MINI SERVICE", "DHCP");
+	// Give DHCP time to come up.
+	ServiceDrawReadyScreen("IP: (joining)");
 	for (unsigned i = 0; i < 150; ++i) // ~15s
 	{
-		if (net->IsRunning())
+		if (net->IsRunning() && !net->GetConfig()->GetIPAddress()->IsNull())
 		{
 			break;
 		}
 		Kernel.get_scheduler()->MsSleep(100);
 	}
 
+	if (!net->IsRunning() || net->GetConfig()->GetIPAddress()->IsNull())
+	{
+		ServiceShow2("MINI SERVICE", "NO DHCP");
+		return;
+	}
+
+	// Now that we have an address, show it.
 	CString ip;
 	net->GetConfig()->GetIPAddress()->Format(&ip);
-	ServiceShow2("MINI SERVICE", (const char *) ip);
+	// Omit the "IP:" prefix so IPv4 fits on one OLED line.
+	ServiceDrawReadyScreen((const char *) ip);
 
 	// HTTP control plane.
 	if (!g_http_server)
