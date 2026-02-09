@@ -9,6 +9,9 @@
 
 #include <circle/net/httpdaemon.h>
 
+// Service-kernel HTTP port (dev default).
+static constexpr unsigned kServiceHttpPort = 15410;
+
 class CServiceHttpServer : public CHTTPDaemon
 {
 public:
