@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static constexpr u16 kServicePort = 15410;
 static constexpr unsigned kMaxContentSize = 8 * 1024 * 1024;
 
 static const char kMetaContentType[] = "application/json";
@@ -787,7 +786,7 @@ THTTPStatus CServiceHttpServer::HandleUpload(u8 *pBuffer, unsigned *pLength, boo
 }
 
 CServiceHttpServer::CServiceHttpServer(CNetSubSystem *pNetSubSystem, CSocket *pSocket)
-	: CHTTPDaemon(pNetSubSystem, pSocket, kMaxContentSize, kServicePort, 0),
+	: CHTTPDaemon(pNetSubSystem, pSocket, kMaxContentSize, kServiceHttpPort, 0),
 	  m_pNetSubSystem(pNetSubSystem)
 {
 	if (g_nonce == 0)
@@ -848,7 +847,7 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		snprintf(response, sizeof(response),
 			 "{\"state\":\"READY\",\"nonce\":%u,\"tcp_port\":%u,\"caps\":[],\"modified_count\":%u,\"modified_id\":%u}",
 			 static_cast<unsigned>(g_nonce),
-			 static_cast<unsigned>(kServicePort),
+			 static_cast<unsigned>(kServiceHttpPort),
 			 modified_count,
 			 static_cast<unsigned>(modified_id));
 		return WriteJsonResult(pBuffer, pLength, response);
