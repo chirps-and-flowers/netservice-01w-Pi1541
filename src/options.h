@@ -118,6 +118,11 @@ public:
 
 	inline unsigned int GetHeadLess() const { return headLess; }
 #if defined(__CIRCLE__)
+	// Number of cached modified-disk sessions to keep in /1541/_temp_dirty_disks.
+	// Set to 0 to keep no history (keep only the current session).
+	inline unsigned int TempSavedSessions() const { return tempSavedSessions; }
+#endif
+#if defined(__CIRCLE__)
 	inline unsigned int GetNetWifi() const { return netWifi; }
 	inline unsigned int GetNetEthernet() const { return netEthernet; }
 	inline void SetHeadLess(unsigned int h) { headLess = h; }
@@ -217,6 +222,7 @@ private:
 	unsigned int headLess;
 
 #if defined (__CIRCLE__)
+	unsigned int tempSavedSessions;
 	// WiFi & Networking
 	unsigned int netWifi;
 	unsigned int netEthernet;

@@ -206,7 +206,7 @@ function renderDirtyModal() {
     vl
   ));
 
-  var discardText = "DISMISS ";
+  var discardText = "CLOSE ";
   var discardNeed = discardText.length + 1; // + "<"
   var discardPad = " ".repeat(Math.max(0, innerPad - discardNeed));
   out.push(lineHtml(vl,
@@ -227,4 +227,3 @@ function renderDirtyModal() {
 
   dirtyModal.innerHTML = out.join("");
 }
-
