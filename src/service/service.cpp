@@ -250,10 +250,18 @@ void service_init(void)
 	}
 }
 
+const Options *service_options(void)
+{
+	return &g_options;
+}
+
 bool service_run(void)
 {
 	Kernel.log("service: run");
 	ServiceEnsureLCD();
+	bool shownJoining = false;
+	bool shownReady = false;
+	char shownIp[32] = {0};
 
 	for (;;)
 	{
@@ -275,6 +283,45 @@ bool service_run(void)
 
 			Kernel.get_scheduler()->MsSleep(150);
 			return true;
+		}
+
+		CNetSubSystem *net = Kernel.get_net();
+		const bool linkUp = Kernel.wifi_is_connected();
+		const bool dhcpReady = net && net->IsRunning() && !net->GetConfig()->GetIPAddress()->IsNull();
+
+		if (!linkUp || !dhcpReady)
+		{
+			if (!shownJoining)
+			{
+				ServiceDrawReadyScreen("IP: (joining)");
+				shownJoining = true;
+				shownReady = false;
+				shownIp[0] = '\0';
+			}
+		}
+		else
+		{
+			CString ip;
+			net->GetConfig()->GetIPAddress()->Format(&ip);
+			const char *ipText = (const char *) ip;
+			if (!shownReady || strcmp(shownIp, ipText) != 0)
+			{
+				ServiceDrawReadyScreen(ipText);
+				strncpy(shownIp, ipText, sizeof(shownIp) - 1);
+				shownIp[sizeof(shownIp) - 1] = '\0';
+				shownReady = true;
+				shownJoining = false;
+			}
+
+			// If service_init exited before DHCP came up, start the server now.
+			if (!g_http_server)
+			{
+				g_http_server = new CServiceHttpServer(net);
+				if (!g_http_server)
+				{
+					Kernel.log("service: http server alloc failed");
+				}
+			}
 		}
 
 		Kernel.get_scheduler()->MsSleep(50);

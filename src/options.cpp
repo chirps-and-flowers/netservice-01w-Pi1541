@@ -165,6 +165,7 @@ Options::Options(void)
 	, rotaryEncoderInvert(0) //ROTARY:
 	, headLess(0)
 #if defined(__CIRCLE__)	
+	, tempSavedSessions(10)
 	, netWifi(0)
 	, netEthernet(0)
 	, noHealthMonitor(1)
@@ -269,6 +270,7 @@ void Options::Process(char* buffer)
 		ELSE_CHECK_DECIMAL_OPTION(rotaryEncoderInvert) //ROTARY:
 		ELSE_CHECK_DECIMAL_OPTION(headLess)
 #if defined(__CIRCLE__)
+		ELSE_CHECK_DECIMAL_OPTION(tempSavedSessions)
 		ELSE_CHECK_DECIMAL_OPTION(netWifi)
 		ELSE_CHECK_DECIMAL_OPTION(netEthernet)
 		ELSE_CHECK_DECIMAL_OPTION(noHealthMonitor)
@@ -442,4 +444,3 @@ DiskImage::DiskType Options::GetNewDiskType() const
 
 	return DiskImage::D64;
 }
-

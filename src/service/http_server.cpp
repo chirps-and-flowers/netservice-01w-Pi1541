@@ -5,6 +5,9 @@
 // Uses Circle's CHTTPDaemon (vendor-patched for PUT + raw header/body access).
 
 #include "http_server.h"
+#include "service.h"
+
+#include "options.h"
 
 #include <circle/bcmrandom.h>
 #include <circle/net/http.h>
@@ -46,6 +49,7 @@ static char g_modified_display[kModifiedMax][64];
 static char g_modified_cached[kModifiedMax][256];
 static unsigned g_modified_count = 0;
 static uint32_t g_modified_id = 0;
+static char g_modified_session[32];
 
 static const char s_Index[] =
 #include "webcontent/miniservice/index.h"
@@ -56,6 +60,7 @@ static const unsigned char s_Font[] = {
 };
 
 static uint32_t Crc32Update(uint32_t crc, const u8 *data, size_t len);
+static void SanitizeFilename(const char *input, char *output, size_t output_len);
 
 static constexpr size_t kMaxLineLength = 512;
 static constexpr size_t kMaxPathLength = 512;
@@ -125,6 +130,184 @@ static bool EnsureDir(const char *path)
 static bool EnsureServiceDirs(void)
 {
 	return EnsureDir("/1541") && EnsureDir(kIncomingDir) && EnsureDir(kActiveMountDir) && EnsureDir(kTempDirtyDir);
+}
+
+static bool ParseTempDirtySessionNumber(const char *name, unsigned *out_num)
+{
+	// Sessions are stored as S00000001, S00000002, ...
+	if (!name || name[0] != 'S')
+		return false;
+	if (strlen(name) != 9)
+		return false;
+	unsigned num = 0;
+	for (unsigned i = 1; i < 9; ++i)
+	{
+		if (!isdigit((unsigned char)name[i]))
+			return false;
+		num = (num * 10) + (unsigned)(name[i] - '0');
+	}
+	if (out_num)
+		*out_num = num;
+	return true;
+}
+
+static void MakeSessionId(char *out, size_t out_len)
+{
+	if (!out || out_len == 0)
+		return;
+
+	// Pi Zero has no RTC and we don't want to depend on NTP. Instead of YYMMDD_HHMMSS,
+	// derive the next session id by scanning existing session directories and picking
+	// max+1. No global LAST file is used.
+	unsigned max_seen = 0;
+	DIR dir;
+	if (f_opendir(&dir, kTempDirtyDir) == FR_OK)
+	{
+		FILINFO fi;
+		for (;;)
+		{
+			if (f_readdir(&dir, &fi) != FR_OK)
+				break;
+			if (fi.fname[0] == '\0')
+				break;
+			if (!(fi.fattrib & AM_DIR))
+				continue;
+			unsigned n = 0;
+			if (ParseTempDirtySessionNumber(fi.fname, &n) && n > max_seen)
+				max_seen = n;
+		}
+		f_closedir(&dir);
+	}
+
+	unsigned next = max_seen + 1;
+	for (unsigned tries = 0; tries < 1000; ++tries)
+	{
+		snprintf(out, out_len, "S%08u", next);
+		char path[128];
+		snprintf(path, sizeof(path), "%s/%s", kTempDirtyDir, out);
+		FILINFO fi;
+		if (f_stat(path, &fi) != FR_OK)
+			return;
+		++next;
+	}
+
+	// Extremely unlikely fallback: just pick something deterministic.
+	snprintf(out, out_len, "S%08u", max_seen + 1);
+}
+
+static void CleanupTempDirtyDirs(void)
+{
+	const Options *opt = service_options();
+	unsigned keep = opt ? opt->TempSavedSessions() : 10;
+
+	// 0 means keep no history; keep only the current session (if any).
+	if (keep == 0)
+		keep = 1;
+
+	if (!g_modified_session[0])
+		return;
+
+	DIR dir;
+	if (f_opendir(&dir, kTempDirtyDir) != FR_OK)
+		return;
+
+	static char numeric[64][32];
+	unsigned numeric_count = 0;
+	static char legacy[64][32];
+	unsigned legacy_count = 0;
+
+	FILINFO fi;
+	for (;;)
+	{
+		if (f_readdir(&dir, &fi) != FR_OK)
+			break;
+		if (fi.fname[0] == '\0')
+			break;
+		if (!(fi.fattrib & AM_DIR))
+			continue;
+
+		// Always keep the current session dir.
+		if (strcmp(fi.fname, g_modified_session) == 0)
+			continue;
+
+		unsigned n = 0;
+		if (ParseTempDirtySessionNumber(fi.fname, &n))
+		{
+			if (numeric_count < 64)
+			{
+				snprintf(numeric[numeric_count], sizeof(numeric[0]), "%s", fi.fname);
+				++numeric_count;
+			}
+		}
+		else
+		{
+			// Legacy/unknown session dirs (e.g. older CRC-style names) are treated as oldest.
+			if (legacy_count < 64)
+			{
+				snprintf(legacy[legacy_count], sizeof(legacy[0]), "%s", fi.fname);
+				++legacy_count;
+			}
+		}
+	}
+	f_closedir(&dir);
+
+	unsigned total = 1 + numeric_count + legacy_count; // +1 for current session
+	if (total <= keep)
+		return;
+
+	// Sort numeric sessions lexicographically; with fixed width S00000001 this matches order.
+	for (unsigned i = 0; i < numeric_count; ++i)
+	{
+		for (unsigned j = i + 1; j < numeric_count; ++j)
+		{
+			if (strcmp(numeric[i], numeric[j]) > 0)
+			{
+				char tmp[32];
+				snprintf(tmp, sizeof(tmp), "%s", numeric[i]);
+				snprintf(numeric[i], sizeof(numeric[i]), "%s", numeric[j]);
+				snprintf(numeric[j], sizeof(numeric[j]), "%s", tmp);
+			}
+		}
+	}
+
+	unsigned to_delete = total - keep;
+
+	auto DeleteSessionDir = [](const char *session) {
+		char path[128];
+		snprintf(path, sizeof(path), "%s/%s", kTempDirtyDir, session);
+
+		DIR sd;
+		if (f_opendir(&sd, path) == FR_OK)
+		{
+			FILINFO sfi;
+			for (;;)
+			{
+				if (f_readdir(&sd, &sfi) != FR_OK)
+					break;
+				if (sfi.fname[0] == '\0')
+					break;
+				if (sfi.fattrib & AM_DIR)
+					continue;
+				char fp[192];
+				snprintf(fp, sizeof(fp), "%s/%s", path, sfi.fname);
+				(void) f_unlink(fp);
+			}
+			f_closedir(&sd);
+		}
+		(void) f_unlink(path); // FatFs uses f_unlink for directories too.
+	};
+
+	// Delete legacy dirs first (treat as oldest).
+	for (unsigned i = 0; i < legacy_count && to_delete; ++i)
+	{
+		DeleteSessionDir(legacy[i]);
+		--to_delete;
+	}
+	for (unsigned i = 0; i < numeric_count && to_delete; ++i)
+	{
+		DeleteSessionDir(numeric[i]);
+		--to_delete;
+	}
 }
 
 static bool ContainsDotDotSegment(const char *path)
@@ -217,6 +400,88 @@ static void BasenameOf(const char *path, char *out, size_t out_len)
 	snprintf(out, out_len, "%s", base);
 }
 
+static bool CopyFile(const char *src_path, const char *dst_path)
+{
+	if (!src_path || !src_path[0] || !dst_path || !dst_path[0])
+		return false;
+
+	FIL in, out;
+	if (f_open(&in, src_path, FA_READ) != FR_OK)
+		return false;
+	if (f_open(&out, dst_path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+	{
+		f_close(&in);
+		return false;
+	}
+
+	UINT rb = 0, wb = 0;
+	u8 buf[4096];
+	for (;;)
+	{
+		if (f_read(&in, buf, sizeof(buf), &rb) != FR_OK || rb == 0)
+			break;
+		if (f_write(&out, buf, rb, &wb) != FR_OK || wb != rb)
+		{
+			f_close(&out);
+			f_close(&in);
+			return false;
+		}
+	}
+	f_sync(&out);
+	f_close(&out);
+	f_close(&in);
+	return true;
+}
+
+static bool NormalizeModifiedSourcePath(const char *line, char *out, size_t out_len)
+{
+	if (!line || !line[0] || !out || out_len == 0)
+		return false;
+
+	char tmp[kMaxLineLength];
+	snprintf(tmp, sizeof(tmp), "%s", line);
+	TrimLine(tmp);
+	if (!tmp[0])
+		return false;
+
+	const char *p = tmp;
+	// Accept legacy "SD:/..." entries and normalize to "/...".
+	if ((p[0] == 'S' || p[0] == 's')
+		&& (p[1] == 'D' || p[1] == 'd')
+		&& p[2] == ':'
+		&& (p[3] == '/' || p[3] == '\\'))
+	{
+		p += 3;
+	}
+
+	if (p[0] == '/')
+	{
+		snprintf(out, out_len, "%s", p);
+	}
+	else if (strchr(p, '/') || strchr(p, '\\'))
+	{
+		snprintf(out, out_len, "/%s", p);
+	}
+	else
+	{
+		snprintf(out, out_len, "%s/%s", kActiveMountDir, p);
+	}
+
+	for (char *q = out; *q; ++q)
+	{
+		if (*q == '\\')
+			*q = '/';
+	}
+	return true;
+}
+
+static bool OpenModifiedList(FIL *fp)
+{
+	if (!fp)
+		return false;
+	return f_open(fp, kModifiedListPath, FA_READ) == FR_OK;
+}
+
 static bool ReadModifiedListSummary(unsigned *out_count, uint32_t *out_crc)
 {
 	if (out_count)
@@ -225,7 +490,7 @@ static bool ReadModifiedListSummary(unsigned *out_count, uint32_t *out_crc)
 		*out_crc = 0;
 
 	FIL fp;
-	if (f_open(&fp, kModifiedListPath, FA_READ) != FR_OK)
+	if (!OpenModifiedList(&fp))
 		return false;
 
 	uint32_t crc = 0;
@@ -266,14 +531,22 @@ static bool ReadModifiedListSummary(unsigned *out_count, uint32_t *out_crc)
 	return true;
 }
 
-static bool PopulateModifiedListDirect(uint32_t crc)
+static bool PopulateModifiedListDirect(uint32_t crc, const char *session_dir)
 {
 	FIL fp;
-	if (f_open(&fp, kModifiedListPath, FA_READ) != FR_OK)
+	if (!OpenModifiedList(&fp))
 		return false;
 
 	g_modified_count = 0;
 	g_modified_id = crc;
+	if (!session_dir)
+		g_modified_session[0] = '\0';
+	else
+	{
+		char base[32];
+		BasenameOf(session_dir, base, sizeof(base));
+		snprintf(g_modified_session, sizeof(g_modified_session), "%s", base);
+	}
 	for (unsigned i = 0; i < kModifiedMax; ++i)
 	{
 		g_modified_display[i][0] = '\0';
@@ -296,24 +569,35 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 			if (!line[0] || g_modified_count >= kModifiedMax)
 				continue;
 
-			const char *src_path = line;
 			char src_full[kMaxPathLength];
-			if (line[0] != '/')
-			{
-				if (strchr(line, '/') || strchr(line, '\\'))
-					snprintf(src_full, sizeof(src_full), "/%s", line);
-				else
-					snprintf(src_full, sizeof(src_full), "%s/%s", kActiveMountDir, line);
-				src_path = src_full;
-			}
-
+			if (!NormalizeModifiedSourcePath(line, src_full, sizeof(src_full)))
+				continue;
+			const char *src_path = src_full;
 			if (!IsAllowedModifiedPath(src_path))
 				continue;
 
 			char base[64];
 			BasenameOf(src_path, base, sizeof(base));
 			snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
-			snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+
+			if (session_dir && session_dir[0])
+			{
+				char safe[64];
+				SanitizeFilename(base, safe, sizeof(safe));
+				if (!safe[0])
+					snprintf(safe, sizeof(safe), "disk_%u.bin", g_modified_count + 1);
+
+				char dst[256];
+				snprintf(dst, sizeof(dst), "%s/%02u_%s", session_dir, g_modified_count + 1, safe);
+				if (CopyFile(src_path, dst))
+					snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", dst);
+				else
+					snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+			}
+			else
+			{
+				snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+			}
 			++g_modified_count;
 			continue;
 		}
@@ -328,28 +612,38 @@ static bool PopulateModifiedListDirect(uint32_t crc)
 		TrimLine(line);
 		if (line[0])
 		{
-			const char *src_path = line;
 			char src_full[kMaxPathLength];
-			if (line[0] != '/')
-			{
-				if (strchr(line, '/') || strchr(line, '\\'))
-					snprintf(src_full, sizeof(src_full), "/%s", line);
-				else
-					snprintf(src_full, sizeof(src_full), "%s/%s", kActiveMountDir, line);
-				src_path = src_full;
-			}
-
+			if (!NormalizeModifiedSourcePath(line, src_full, sizeof(src_full)))
+				goto modified_done;
+			const char *src_path = src_full;
 			if (IsAllowedModifiedPath(src_path))
 			{
 				char base[64];
 				BasenameOf(src_path, base, sizeof(base));
 				snprintf(g_modified_display[g_modified_count], sizeof(g_modified_display[g_modified_count]), "%s", base);
-				snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+				if (session_dir && session_dir[0])
+				{
+					char safe[64];
+					SanitizeFilename(base, safe, sizeof(safe));
+					if (!safe[0])
+						snprintf(safe, sizeof(safe), "disk_%u.bin", g_modified_count + 1);
+					char dst[256];
+					snprintf(dst, sizeof(dst), "%s/%02u_%s", session_dir, g_modified_count + 1, safe);
+					if (CopyFile(src_path, dst))
+						snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", dst);
+					else
+						snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+				}
+				else
+				{
+					snprintf(g_modified_cached[g_modified_count], sizeof(g_modified_cached[g_modified_count]), "%s", src_path);
+				}
 				++g_modified_count;
 			}
 		}
 	}
 
+modified_done:
 	f_close(&fp);
 	return g_modified_count != 0;
 }
@@ -362,14 +656,43 @@ static bool EnsureModifiedListLoaded(void)
 	{
 		g_modified_count = 0;
 		g_modified_id = 0;
+		g_modified_session[0] = '\0';
 		return false;
 	}
 
 	// If we already parsed this exact dirty.lst content, keep the cached list.
-	if (g_modified_id == crc)
+	if (g_modified_id == crc && g_modified_count == count)
 		return g_modified_count != 0;
 
-	return PopulateModifiedListDirect(crc);
+	if (!EnsureServiceDirs())
+		return PopulateModifiedListDirect(crc, nullptr);
+
+	// Reuse the same session dir until the dirty list clears.
+	if (g_modified_session[0])
+	{
+		// Defensive: older versions stored a full path in g_modified_session.
+		if (strchr(g_modified_session, '/') || strchr(g_modified_session, '\\'))
+		{
+			char base[32];
+			BasenameOf(g_modified_session, base, sizeof(base));
+			snprintf(g_modified_session, sizeof(g_modified_session), "%s", base);
+		}
+	}
+	else
+	{
+		MakeSessionId(g_modified_session, sizeof(g_modified_session));
+	}
+
+	char session_dir[128];
+	snprintf(session_dir, sizeof(session_dir), "%s/%s", kTempDirtyDir, g_modified_session);
+	EnsureDir(session_dir);
+
+	const bool ok = PopulateModifiedListDirect(crc, session_dir);
+	if (ok)
+	{
+		CleanupTempDirtyDirs();
+	}
+	return ok;
 }
 
 static bool ReadActiveList(char out_names[kPendingMax][64], unsigned &out_count)
@@ -900,11 +1223,7 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 
 		unsigned modified_count = 0;
 		uint32_t modified_id = 0;
-		if (EnsureModifiedListLoaded())
-		{
-			modified_count = g_modified_count;
-			modified_id = g_modified_id;
-		}
+		(void) ReadModifiedListSummary(&modified_count, &modified_id);
 
 		// Keep response shape stable to minimize frontend churn.
 		char response[kJsonSmallResponse];
@@ -928,7 +1247,7 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		char *out = reinterpret_cast<char *>(pBuffer);
 		const size_t cap = static_cast<size_t>(*pLength);
 		size_t off = 0;
-		if (!JsonAppend(out, cap, &off, "{\"session\":\"\",\"count\":%u,\"files\":[", g_modified_count))
+		if (!JsonAppend(out, cap, &off, "{\"session\":\"%s\",\"count\":%u,\"files\":[", g_modified_session, g_modified_count))
 			return WriteJsonError(pBuffer, pLength, "RESP_TOO_LARGE");
 		for (unsigned i = 0; i < g_modified_count; ++i)
 		{

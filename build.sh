@@ -118,7 +118,11 @@ build_service() {
   echo "circle-stdlib: build newlib + circle (this can take a while)" >&2
   ( cd "$stage" && make -j"$(jobs)" newlib circle ) >/dev/null
 
-  # The service kernel depends on generated mini-service webcontent headers.
+  # The service kernel uses generated headers from both:
+  # - webcontent/miniservice/index.h (UI)
+  # - webcontent/C64_Pro_Mono-STYLE.h (font payload)
+  # Build both generators for service-only builds.
+  make -C "${ROOT}/src/webcontent" all >/dev/null
   make -C "${ROOT}/src/webcontent/miniservice" all >/dev/null
 
   # Service kernel links an explicit object list (service/*.o + minimal shared objs),
