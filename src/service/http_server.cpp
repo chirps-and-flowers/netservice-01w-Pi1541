@@ -23,6 +23,8 @@
 static constexpr unsigned kMaxContentSize = 8 * 1024 * 1024;
 
 static const char kMetaContentType[] = "application/json";
+static const char kMetaHtmlType[] = "text/html; charset=utf-8";
+static const char kMetaFontType[] = "font/ttf";
 
 static const char kIncomingDir[] = "/1541/_incoming";
 static const char kActiveMountDir[] = "/1541/_active_mount";
@@ -44,6 +46,14 @@ static char g_modified_display[kModifiedMax][64];
 static char g_modified_cached[kModifiedMax][256];
 static unsigned g_modified_count = 0;
 static uint32_t g_modified_id = 0;
+
+static const char s_Index[] =
+#include "webcontent/miniservice/index.h"
+;
+
+static const unsigned char s_Font[] = {
+#include "webcontent/C64_Pro_Mono-STYLE.h"
+};
 
 static uint32_t Crc32Update(uint32_t crc, const u8 *data, size_t len);
 
@@ -630,6 +640,38 @@ static THTTPStatus WriteJsonResult(u8 *pBuffer, unsigned *pLength, const char *r
 	return HTTPOK;
 }
 
+static THTTPStatus WriteTextResult(u8 *pBuffer, unsigned *pLength, const char *text)
+{
+	if (!pBuffer || !pLength || !text)
+		return HTTPInternalServerError;
+
+	const unsigned nLength = static_cast<unsigned>(strlen(text));
+	if (nLength > *pLength)
+	{
+		*pLength = 0;
+		return HTTPRequestEntityTooLarge;
+	}
+
+	memcpy(pBuffer, text, nLength);
+	*pLength = nLength;
+	return HTTPOK;
+}
+
+static THTTPStatus WriteBinaryResult(u8 *pBuffer, unsigned *pLength, const unsigned char *data, unsigned data_len)
+{
+	if (!pBuffer || !pLength || !data)
+		return HTTPInternalServerError;
+	if (data_len > *pLength)
+	{
+		*pLength = 0;
+		return HTTPRequestEntityTooLarge;
+	}
+
+	memcpy(pBuffer, data, data_len);
+	*pLength = data_len;
+	return HTTPOK;
+}
+
 static THTTPStatus WriteJsonError(u8 *pBuffer, unsigned *pLength, const char *error)
 {
 	char temp[256];
@@ -828,6 +870,28 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 	*ppContentType = kMetaContentType;
 
 	THTTPRequestMethod method = GetRequestMethod();
+
+	// Root/index aliases accepted by browsers and Circle path normalization.
+	if (pPath[0] == '\0'
+		|| strcmp(pPath, "/") == 0
+		|| strcmp(pPath, "/index.html") == 0
+		|| strcmp(pPath, "/index.html/") == 0
+		|| strcmp(pPath, "index.html") == 0
+		|| strcmp(pPath, "index.html/") == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+		*ppContentType = kMetaHtmlType;
+		return WriteTextResult(pBuffer, pLength, s_Index);
+	}
+
+	if (strcmp(pPath, "/C64_Pro_Mono-STYLE.ttf") == 0 || strcmp(pPath, "/C64_Pro_Mono-STYLE.ttf/") == 0)
+	{
+		if (method != HTTPRequestMethodGet)
+			return HTTPMethodNotImplemented;
+		*ppContentType = kMetaFontType;
+		return WriteBinaryResult(pBuffer, pLength, s_Font, sizeof(s_Font));
+	}
 
 	if (strcmp(pPath, "/hello") == 0 || strcmp(pPath, "/hello/") == 0)
 	{
