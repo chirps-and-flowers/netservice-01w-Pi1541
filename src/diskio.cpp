@@ -289,28 +289,14 @@ DRESULT disk_ioctl (
 	void *buff		/* Buffer to send/receive control data */
 )
 {
-	//DRESULT res;
-	//int result;
+	(void) buff;
 
-	//switch (pdrv) {
-	//case DEV_RAM :
-
-	//	// Process of the command for the RAM drive
-
-	//	return res;
-
-	//case DEV_MMC :
-
-	//	// Process of the command for the MMC/SD card
-
-	//	return res;
-
-	//case DEV_USB :
-
-	//	// Process of the command the USB drive
-
-	//	return res;
-	//}
+	// FatFs uses CTRL_SYNC from f_sync()/f_close() paths. Our SD writes are
+	// synchronous at the block layer, so CTRL_SYNC is a no-op that succeeds.
+	if (pdrv == DEV_MMC && cmd == CTRL_SYNC)
+	{
+		return RES_OK;
+	}
 
 	return RES_PARERR;
 }
