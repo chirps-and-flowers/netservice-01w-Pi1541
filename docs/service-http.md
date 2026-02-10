@@ -126,6 +126,8 @@ GET /modified/download/<i>                 (CServiceHttpServer::GetContent)
 ## Endpoints (v1)
 
 Readiness:
+- `GET /` -> mini LAN UI HTML
+- `GET /C64_Pro_Mono-STYLE.ttf` -> UI font (ttf)
 - `GET /hello` -> `{state, nonce, tcp_port, modified_count, modified_id, ...}`
 
 Uploads:

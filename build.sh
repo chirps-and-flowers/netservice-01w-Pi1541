@@ -118,8 +118,8 @@ build_service() {
   echo "circle-stdlib: build newlib + circle (this can take a while)" >&2
   ( cd "$stage" && make -j"$(jobs)" newlib circle ) >/dev/null
 
-  # The Circle kernel depends on generated webcontent headers (src/webcontent/*.h).
-  make -C "${ROOT}/src/webcontent" all >/dev/null
+  # The service kernel depends on generated mini-service webcontent headers.
+  make -C "${ROOT}/src/webcontent/miniservice" all >/dev/null
 
   # Service kernel links an explicit object list (service/*.o + minimal shared objs),
   # so Makefile.circle’s default OBJS (which include emulator objects) are overridden here.

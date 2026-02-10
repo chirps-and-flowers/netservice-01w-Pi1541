@@ -1852,21 +1852,17 @@ extern int mount_new;
 				fileBrowser->DisplayRoot(); // TO CHECK
 
 #if !defined(__CIRCLE__) && !defined(__PICO2__) && !defined(ESP32)
-			if (exitReason == EXIT_SERVICE)
-			{
-				if (screenLCD)
+				if (exitReason == EXIT_SERVICE)
 				{
-					const char *msg = "MINI SERVICE";
-					screenLCD->Clear(0);
-					int x = (int)(screenLCD->Width() - (screenLCD->GetFontWidth() * strlen(msg))) / 2;
-					if (x < 0) x = 0;
-					int y = (int)(screenLCD->Height() - screenLCD->GetFontHeight()) / 2;
-					if (y < 0) y = 0;
-					screenLCD->PrintText(false, (u32)x, (u32)y, (char*)msg);
-					screenLCD->RefreshScreen();
+					if (screenLCD)
+					{
+						const char *msg = "MINI SERVICE";
+						screenLCD->Clear(0);
+						screenLCD->PrintText(false, 0, 0, (char*)msg);
+						screenLCD->RefreshScreen();
+					}
+					ChainBootChainloader("/kernel_chainloader.img");
 				}
-				ChainBootChainloader("/kernel_chainloader.img");
-			}
 #endif
 
 			inputMappings->WaitForClearButtons();

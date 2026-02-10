@@ -44,6 +44,8 @@ CHAINLOADER_SRC="${OUT_DIR}/kernel_chainloader.img"
 EMU_DEST="${SD_MOUNT}/kernel.img"
 SRV_DEST="${SD_MOUNT}/kernel_srv.img"
 CHAINLOADER_DEST="${SD_MOUNT}/kernel_chainloader.img"
+SRV_LZ4_DEST="${SD_MOUNT}/kernel_srv.lz4"
+SRV_IMG_LZ4_DEST="${SD_MOUNT}/kernel_srv.img.lz4"
 CFG_DEST="${SD_MOUNT}/config.txt"
 
 [[ -d "${SD_MOUNT}" ]] || { echo "ERROR: SD mount point not found: ${SD_MOUNT}" >&2; exit 1; }
@@ -77,10 +79,15 @@ cp -f "${EMU_SRC}" "${EMU_DEST}"
 cp -f "${SRV_SRC}" "${SRV_DEST}"
 cp -f "${CHAINLOADER_SRC}" "${CHAINLOADER_DEST}"
 
+# Chainloader prefers .lz4 when present; remove stale service lz4 variants so
+# the freshly deployed kernel_srv.img is guaranteed to boot.
+rm -f "${SRV_LZ4_DEST}" "${SRV_IMG_LZ4_DEST}"
+
 echo "Installed:" >&2
 echo "  emu     -> ${EMU_DEST} ($(stat -c %s "${EMU_DEST}") bytes)" >&2
 echo "  service -> ${SRV_DEST} ($(stat -c %s "${SRV_DEST}") bytes)" >&2
 echo "  chainld -> ${CHAINLOADER_DEST} ($(stat -c %s "${CHAINLOADER_DEST}") bytes)" >&2
+echo "  cleanup -> removed stale ${SRV_LZ4_DEST##*/} / ${SRV_IMG_LZ4_DEST##*/} if present" >&2
 
 echo "Boot mode: ${BOOT_MODE}" >&2
 

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi1541 Mini UI</title>
+  <style>
+@@INLINE_STYLE@@
+  </style>
+</head>
+<body>
+  <div id="screen">
+    <div class="line left-wide title" id="titleLine" style="grid-row: 2; z-index: 1;">--- PI1541-01W MINI LAN UI ---</div>
+    <div class="line left" id="statusLine" style="grid-row: 6;">STATUS: <span id="statusValue">SEARCHING</span></div>
+
+    <div class="line left divider" style="grid-row: 7;">&nbsp;</div>
+
+    <div class="line left" id="actionLine1" style="grid-row: 9;"></div>
+    <div class="line left" id="actionLine2" style="grid-row: 11;"></div>
+
+    <div class="line left-wide divider" id="optBoxTop" style="grid-row: 13; z-index: 2;"></div>
+    <div class="line left-wide divider" id="optBoxTop2" style="grid-row: 14; z-index: 2;"></div>
+    <div class="line left-wide" id="optimizeLine" style="grid-row: 14;"></div>
+    <div class="line left-wide divider" id="optBoxMid" style="grid-row: 15; z-index: 2;"></div>
+    <div class="line left-wide divider" id="optBoxBottom" style="grid-row: 15; z-index: 2;"></div>
+
+    <div class="list" id="list"></div>
+
+    <div class="line left" id="exportLine" style="grid-row: 28;"></div>
+    <div class="line left-wide" id="exportSpacer" style="grid-row: 29;"></div>
+
+    <div class="right" id="right">
+      <div id="right-panel">
+        <div id="svgEmpty">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="109 100 324 541" role="img" aria-label="Disk insert effect">
+            <style>
+              @keyframes insertMove {
+                0%, 50.6329% { transform: translate(0px, 95px); }
+                81.0127%     { transform: translate(0px, 0px); }
+                100%         { transform: translate(0px, 0px); }
+              }
+              @keyframes insertScale {
+                0%, 50.6329% { transform: scale(1.12, 1.12); }
+                81.0127%     { transform: scale(0.5760, 0); }
+                100%         { transform: scale(0.5760, 0); }
+              }
+              .move  { animation: insertMove 3.95s steps(14, end) infinite; }
+              .scale { animation: insertScale 3.95s steps(14, end) infinite; transform-origin: 0px 0px; }
+            </style>
+            <defs>
+              <pattern id="px" width="6" height="6" patternUnits="userSpaceOnUse">
+                <rect x="0" y="0" width="6" height="6" fill="transparent"/>
+                <rect x="0" y="0" width="3" height="3" fill="#000" opacity="0.18"/>
+                <rect x="3" y="3" width="3" height="3" fill="#000" opacity="0.18"/>
+              </pattern>
+            </defs>
+            <rect x="70" y="100" width="402" height="541" fill="#B2B2B2"/>
+            <g id="drive" transform="translate(140 120)">
+              <path fill="#B1B1B1" d="M0 0h263v86H0V0Z"/>
+              <path fill="#000" fill-rule="evenodd"
+                    d="M1 1h261v84H1V1Z
+                       M12 10v2H9v52h3v3h5v2h228v-2h5v-3h2V12h-2v-2H12Z"/>
+              <path fill="#B2B2B2" fill-rule="evenodd"
+                    d="M0 0h263v86H0V0Z
+                       M9 5v2H6v3H4v57h2v2h3v3h8v3h21v5h186v-5h21v-3h7v-3h3v-2h3V10h-3V7h-3V5H9Z"/>
+              <path fill="#000"
+                    d="M38 41h186v5H38v-5ZM229 18h5v2h3v-2h5v2h3v8h-3v3h-3v2h-2v3h-3v-3h-2v-2h-3v-3h-2v-8h2v-2ZM66 20h3v5h10v6H69v5h-3v-3h-3v-2h-2v-6h2v-2h3v-3ZM113 18h5v20h-5V18ZM43 18h5v20h-5V18ZM19 43h16v3H19v-3ZM87 31h5v5h-5v-5Z"/>
+            </g>
+            <g transform="translate(271 164)">
+              <g class="move">
+                <g class="scale" shape-rendering="crispEdges">
+                  <g transform="translate(-161.5 0)" shape-rendering="crispEdges">
+                    <path fill="#B2B2B2" d="M0 0h323v323H0V0Z"/>
+                    <path fill="#B2B2B2" d="M49 229h83v6h20v62H28v-62h21v-6Z"/>
+                    <path fill="#000" d="M7 7h311v310H7v-62h6v57h300V12H13v223H7V7Z"/>
+                    <path fill="#B2B2B2" d="M152 35h21v5h5v3h3v52h-3v2h-5v6h-21v-6h-5v-2h-2V43h2v-3h5v-5Z"/>
+                    <path fill="#000" d="M28 235h21v5H33v52h114v-52h-15v-5h20v62H28v-62ZM132 183h20v18h21v-18h21v10h-11v11h-10v2h-21v-2h-10v-11h-10v-10ZM152 118h21v3h10v10h11v8h-21v-16h-21v16h-20v-8h10v-10h10v-3ZM49 229h83v6H49v-6ZM145 35h7v5h-5v3h-2v52h2v2h5v6h-7v-3h-3v-3h-3V40h3v-2h3v-3Z"/>
+                    <path fill="#000" d="M49 268h83v5H49v-5ZM49 248h83v5H49v-5ZM173 35h8v3h2v2h3v57h-3v3h-2v3h-8v-6h5v-2h3V43h-3v-3h-5v-5ZM121 141h11v11h-8v20h8v11h-11v-11h-2v-20h2v-11ZM194 141h10v11h3v20h-3v11h-10v-11h8v-20h-8v-11ZM95 134h11v2h2v11h-2v2H95v-2h-2v-11h2v-2ZM13 235h10v18H13v-3h5v-13h-5v-2ZM152 103h21v5h-21v-5ZM152 30h21v5h-21v-5Z"/>
+                    <rect x="0" y="0" width="323" height="323" fill="url(#px)" opacity="0.22"/>
+                  </g>
+                </g>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <div id="svgOpen" class="hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="109 100 324 541" role="img" aria-label="Disk drive (hatch open)">
+            <rect x="70" y="100" width="402" height="541" fill="#B2B2B2"/>
+
+            <g id="driveOpen" transform="translate(140 120)">
+              <path fill="#B1B1B1" d="M0 0h263v86H0V0Z"/>
+              <path fill="#000" fill-rule="evenodd"
+                    d="M1 1h261v84H1V1Z
+                       M12 10v2H9v52h3v3h5v2h228v-2h5v-3h2V12h-2v-2H12Z"/>
+              <path fill="#B2B2B2" fill-rule="evenodd"
+                    d="M0 0h263v86H0V0Z
+                       M9 5v2H6v3H4v57h2v2h3v3h8v3h21v5h186v-5h21v-3h7v-3h3v-2h3V10h-3V7h-3V5H9Z"/>
+              <path fill="#000"
+                    d="M38 41h186v5H38v-5ZM229 18h5v2h3v-2h5v2h3v8h-3v3h-3v2h-2v3h-3v-3h-2v-2h-3v-3h-2v-8h2v-2ZM66 20h3v5h10v6H69v5h-3v-3h-3v-2h-2v-6h2v-2h3v-3ZM113 18h5v20h-5V18ZM43 18h5v20h-5V18ZM19 43h16v3H19v-3ZM87 31h5v5h-5v-5Z"/>
+            </g>
+          </svg>
+        </div>
+        <div id="svgFull" class="hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="109 100 324 541" role="img" aria-label="Disk drive">
+            <rect x="70" y="100" width="402" height="541" fill="#B2B2B2"/>
+            <g id="driveClosed" transform="translate(140 120)">
+              <path fill="#B1B1B1" d="M0 0h263v86H0V0Z"/>
+              <path fill="#000" fill-rule="evenodd"
+                    d="M1 1h261v84H1V1Z
+                       M13 12v2h-3v52h3v3h5v2h228v-2h5v-3h3V14h-3v-2H13Z"/>
+              <path fill="#B2B2B2" fill-rule="evenodd"
+                    d="M0 0h263v86H0V0Z
+                       M10 7v2H8v3H5v57h3v2h2v3h8v3h21v5h186v-5h21v-3h8v-3h2v-2h3V12h-3V9h-2V7H10Z"/>
+              <path fill="#000"
+                    d="M80 43h145v5H80v-5ZM230 20h5v2h3v-2h5v2h3v8h-3v3h-2v2h-3v3h-3v-3h-2v-2h-3v-3h-2v-8h2v-2ZM67 22h5v3h3v2h2v3h-5v21h-5V30h-5v-3h3v-2h2v-3ZM39 43h20v5H39v-5ZM114 20h5v20h-5V20ZM44 20h5v20h-5V20ZM21 45h15v3H21v-3Z"/>
+            </g>
+          </svg>
+	        </div>
+	      </div>
+	    </div>
+
+	    <div id="dirtyModalBackdrop" class="hidden" aria-hidden="true">
+	      <div id="dirtyModal" role="dialog" aria-label="Unsaved disk changes"></div>
+	    </div>
+	  </div>
+
+	  <input id="fileInput" type="file" multiple class="hidden" accept=".d64,.d81,.g64,.nib,.nbz,.t64,.prg,.zip" />
+	  <input id="folderInput" type="file" webkitdirectory multiple class="hidden" />
+
+  <script>
+@@INLINE_APP@@
+  </script>
+</body>
+</html>
