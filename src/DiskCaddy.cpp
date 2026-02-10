@@ -45,12 +45,241 @@ static u32 redMid = RGBA(0xcc, 0, 0, 0xff);
 static u32 grey = RGBA(0x88, 0x88, 0x88, 0xff);
 static u32 greyDark = RGBA(0x44, 0x44, 0x44, 0xff);
 
+static const char kModifiedListDir[] = "/1541/_active_mount";
+static const char kModifiedListPath[] = "/1541/_active_mount/dirty.lst";
+static const char kModifiedListTmpPath[] = "/1541/_active_mount/dirty.lst.tmp";
+static const char kModifiedListRenameFailedPath[] = "/1541/_active_mount/dirty.tmp.failed";
+static const unsigned kModifiedMax = 32;
+
+static bool EnsureDirLegacy(const char *path)
+{
+	if (!path || !path[0])
+		return false;
+	FILINFO fi;
+	if (f_stat(path, &fi) == FR_OK)
+		return (fi.fattrib & AM_DIR) != 0;
+	FRESULT fr = f_mkdir(path);
+	return fr == FR_OK || fr == FR_EXIST;
+}
+
+static bool EnsureModifiedListDir(void)
+{
+	// Create /1541 and /1541/_active_mount if missing.
+	return EnsureDirLegacy("/1541") && EnsureDirLegacy(kModifiedListDir);
+}
+
+static void TrimLine(char *s)
+{
+	if (!s)
+		return;
+	size_t len = strlen(s);
+	while (len && (s[len - 1] == '\n' || s[len - 1] == '\r' || s[len - 1] == ' ' || s[len - 1] == '\t'))
+		s[--len] = '\0';
+	size_t start = 0;
+	while (s[start] == ' ' || s[start] == '\t')
+		++start;
+	if (start)
+		memmove(s, s + start, strlen(s + start) + 1);
+}
+
+static bool LoadLines(const char *path, char out[][256], unsigned &out_count, unsigned max_count)
+{
+	out_count = 0;
+	FIL fp;
+	if (f_open(&fp, path, FA_READ) != FR_OK)
+		return false;
+
+	// Lines are bounded at 255 chars because our writer enforces that limit.
+	// Read-side truncation therefore matches write-side constraints.
+	char line[256];
+	unsigned pos = 0;
+	UINT br = 0;
+	char ch = 0;
+	while (f_read(&fp, &ch, 1, &br) == FR_OK && br == 1)
+	{
+		if (ch == '\r')
+			continue;
+		if (ch == '\n')
+		{
+			line[pos] = '\0';
+			TrimLine(line);
+			pos = 0;
+			if (line[0] && out_count < max_count)
+			{
+				snprintf(out[out_count], 256, "%s", line);
+				++out_count;
+			}
+			continue;
+		}
+		if (pos + 1 < sizeof(line))
+			line[pos++] = ch;
+	}
+	if (pos)
+	{
+		line[pos] = '\0';
+		TrimLine(line);
+		if (line[0] && out_count < max_count)
+		{
+			snprintf(out[out_count], 256, "%s", line);
+			++out_count;
+		}
+	}
+	f_close(&fp);
+	return true;
+}
+
+static bool WriteLinesToFileLegacy(const char *path, char lines[][256], unsigned count)
+{
+	FIL fp;
+	FRESULT fr = f_open(&fp, path, FA_CREATE_ALWAYS | FA_WRITE);
+	if (fr != FR_OK)
+		return false;
+
+	UINT bw = 0;
+	for (unsigned i = 0; i < count; ++i)
+	{
+		if (!lines[i][0])
+			continue;
+		fr = f_write(&fp, lines[i], (UINT)strlen(lines[i]), &bw);
+		if (fr != FR_OK)
+		{
+			f_close(&fp);
+			return false;
+		}
+		const char nl = '\n';
+		fr = f_write(&fp, &nl, 1, &bw);
+		if (fr != FR_OK)
+		{
+			f_close(&fp);
+			return false;
+		}
+	}
+
+	fr = f_sync(&fp);
+	f_close(&fp);
+	return fr == FR_OK;
+}
+
+static void WriteRenameFailedMarker(FRESULT rename_fr)
+{
+	FIL fp;
+	if (f_open(&fp, kModifiedListRenameFailedPath, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+		return;
+
+	char msg[32];
+	snprintf(msg, sizeof(msg), "rename=%d\n", static_cast<int>(rename_fr));
+	UINT bw = 0;
+	(void) f_write(&fp, msg, (UINT) strlen(msg), &bw);
+	(void) f_sync(&fp);
+	(void) f_close(&fp);
+}
+
+static bool WriteLinesAtomic(const char *tmp_path, const char *final_path, char lines[][256], unsigned count)
+{
+	FIL fp;
+	FRESULT fr = f_open(&fp, tmp_path, FA_CREATE_ALWAYS | FA_WRITE);
+	if (fr != FR_OK)
+		return false;
+
+	UINT bw = 0;
+	for (unsigned i = 0; i < count; ++i)
+	{
+		if (!lines[i][0])
+			continue;
+		fr = f_write(&fp, lines[i], (UINT)strlen(lines[i]), &bw);
+		if (fr != FR_OK)
+		{
+			f_close(&fp);
+			return false;
+		}
+		const char nl = '\n';
+		fr = f_write(&fp, &nl, 1, &bw);
+		if (fr != FR_OK)
+		{
+			f_close(&fp);
+			return false;
+		}
+	}
+	fr = f_sync(&fp);
+	if (fr != FR_OK)
+	{
+		f_close(&fp);
+		return false;
+	}
+	f_close(&fp);
+
+	// Prefer legacy behavior: remove destination then rename.
+	(void) f_unlink(final_path);
+	fr = f_rename(tmp_path, final_path);
+	if (fr == FR_OK)
+	{
+		(void) f_unlink(kModifiedListRenameFailedPath);
+		return true;
+	}
+
+	// Fallback: write the final file directly so the service kernel still sees it.
+	if (WriteLinesToFileLegacy(final_path, lines, count))
+	{
+		WriteRenameFailedMarker(fr);
+		(void) f_unlink(tmp_path);
+		return true;
+	}
+
+	// Leave the tmp file in place so the service kernel can still read it.
+	WriteRenameFailedMarker(fr);
+	return false;
+}
+
+static void UpdateModifiedList(char modifiedPaths[][256], unsigned modifiedCount)
+{
+	if (!modifiedCount)
+		return;
+	if (!EnsureModifiedListDir())
+		return;
+
+	char existing[kModifiedMax][256];
+	unsigned existingCount = 0;
+	LoadLines(kModifiedListPath, existing, existingCount, kModifiedMax);
+
+	bool changed = false;
+	for (unsigned i = 0; i < modifiedCount; ++i)
+	{
+		if (!modifiedPaths[i][0])
+			continue;
+		bool found = false;
+		for (unsigned j = 0; j < existingCount; ++j)
+		{
+			if (strcmp(existing[j], modifiedPaths[i]) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found && existingCount < kModifiedMax)
+		{
+			snprintf(existing[existingCount], 256, "%s", modifiedPaths[i]);
+			++existingCount;
+			changed = true;
+		}
+	}
+
+	if (changed)
+	{
+		if (!WriteLinesAtomic(kModifiedListTmpPath, kModifiedListPath, existing, existingCount))
+			return;
+	}
+}
+
 bool DiskCaddy::Empty()
 {
 	int x;
 	int y;
 	int index;
 	bool anyDirty = false;
+	char modifiedPaths[kModifiedMax][256];
+	unsigned modifiedCount = 0;
+	for (unsigned i = 0; i < kModifiedMax; ++i)
+		modifiedPaths[i][0] = '\0';
 
 #if not defined(EXPERIMENTALZERO)
 	if (screen)
@@ -62,6 +291,14 @@ bool DiskCaddy::Empty()
 		if (disks[index]->IsDirty())
 		{
 			anyDirty = true;
+			// Record the full path as seen by the emulator. This list is used by
+			// the service kernel to offer modified disk export/download.
+			const char *nm = disks[index]->GetName();
+			if (nm && nm[0] && modifiedCount < kModifiedMax)
+			{
+				snprintf(modifiedPaths[modifiedCount], 256, "%s", nm);
+				++modifiedCount;
+			}
 #if not defined(EXPERIMENTALZERO)
 			if (screen)
 			{
@@ -126,6 +363,11 @@ bool DiskCaddy::Empty()
 	disks.clear();
 	selectedIndex = 0;
 	oldCaddyIndex = 0;
+
+	// Persist modified disks outside emulation loop.
+	if (anyDirty)
+		UpdateModifiedList(modifiedPaths, modifiedCount);
+
 	return anyDirty;
 }
 
