@@ -263,6 +263,12 @@ bool service_run(void)
 	bool shownReady = false;
 	char shownIp[32] = {0};
 
+	// If we don't get link+IP, periodically restart the Wi-Fi stack so service
+	// mode can recover from flaky association / DHCP behavior.
+	static constexpr unsigned kNetPollMs = 100;
+	static constexpr unsigned kNetRetryMs = 30 * 1000;
+	unsigned notReadyMs = 0;
+
 	for (;;)
 	{
 		if (CServiceHttpServer::IsTeardownRequested())
@@ -291,6 +297,22 @@ bool service_run(void)
 
 		if (!linkUp || !dhcpReady)
 		{
+			// Retry bring-up only before the HTTP server starts, so we never tear
+			// down the net stack while requests could still be in flight.
+			if (!g_http_server)
+			{
+				if (notReadyMs >= kNetRetryMs)
+				{
+					Kernel.log("service: retrying Wi-Fi bring-up");
+					(void) Kernel.wifi_start();
+					notReadyMs = 0;
+				}
+				else
+				{
+					notReadyMs += kNetPollMs;
+				}
+			}
+
 			if (!shownJoining)
 			{
 				ServiceDrawReadyScreen("IP: (joining)");
@@ -301,6 +323,8 @@ bool service_run(void)
 		}
 		else
 		{
+			notReadyMs = 0;
+
 			CString ip;
 			net->GetConfig()->GetIPAddress()->Format(&ip);
 			const char *ipText = (const char *) ip;
@@ -324,7 +348,7 @@ bool service_run(void)
 			}
 		}
 
-		Kernel.get_scheduler()->MsSleep(50);
+		Kernel.get_scheduler()->MsSleep(kNetPollMs);
 	}
 
 	return false;

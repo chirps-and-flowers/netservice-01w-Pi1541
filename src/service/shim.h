@@ -11,6 +11,8 @@
 #ifndef NETSERVICE_SHIM_SERVICE_H
 #define NETSERVICE_SHIM_SERVICE_H
 
+#include <circle/types.h>
+
 // I2C wrappers (Circle).
 #define RPI_I2CInit i2c_init
 #define RPI_I2CSetClock i2c_setclock
@@ -22,11 +24,16 @@ void i2c_setclock(int BSCMaster, int clock_freq);
 int i2c_read(int BSCMaster, unsigned char slaveAddress, void *buffer, unsigned count);
 int i2c_write(int BSCMaster, unsigned char slaveAddress, void *buffer, unsigned count);
 
-// Network config hooks (used by options parsing). Service networking will
-// consume these later; for now they simply store parsed values.
+// Network config hooks used by options parsing. When DHCP is disabled,
+// the service kernel uses these values to configure static IPv4.
 void setIP(const char *ip);
 void setNM(const char *nm);
 void setGW(const char *gw);
 void setDNS(const char *dns);
+
+const u8 *service_static_ip(void);
+const u8 *service_static_nm(void);
+const u8 *service_static_gw(void);
+const u8 *service_static_dns(void);
 
 #endif
