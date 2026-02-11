@@ -1,164 +1,121 @@
-// Sample options.txt configuration file for Pi1541
-////////////////////////// HW Section
+// netservice-01w-Pi1541 options.txt (Pi Zero W only)
+//
+// This file is read by both kernels:
+// - legacy emulator kernel (cycle-exact, no networking)
+// - Circle service kernel ("MINI SERVICE", networking only while active)
 
-// If you are using the split line hardware option (ie Option B) then you need to specify this option
+
+
+// --- HW ----------------------------------------------------------------------
+
+// Split IEC lines (Option B hardware).
 splitIECLines = 1
-// If you are using some type of hardware that requires the lines to be inverted then specify these options here
-//invertIECInputs = 1
-// If you are using a 7407
-//invertIECOutputs = 0
 
-// If you are using a LCD screen then specify it here
+// OLED (SSD1306 over I2C).
 LCDName = ssd1306_128x64
-//LCDName = ssd1306_128x32
-//LCDName = sh1106_128x64
-//LCDName = sh1107_128x128
-// If you are using a LCD screen and you would like PageUp and PageDown keys to work with it (rather than the HDMI screen) then specify this option
-//KeyboardBrowseLCDScreen = 1
 
-// If you are using I2C LCD you can optionally change what pins it is connected to.
-// (defaults to 0 for non-split lines (Option A) or 1 for split lines (Option B))
-//i2cBusMaster = 0 //SDA - pin 27 SCL - pin 28
-i2cBusMaster = 1 //SDA - pin 3 SCL - pin 5
-i2cLcdAddress = 60	// I2C display address in decimal and shifted. 60 == 0x78, 61 == 0x7A
-//i2cLcdFlip = 1 // Rotate i2c LCD screen 180 degrees
-i2cLcdOnContrast = 127 // Allows you to adjust the contrast on your i2c LCD screen
-i2cScan = 1 // scan i2c bus and display addresses on screen
-i2cLcdUseCBMChar = 1 // use CBM chargen font on OLED (old-working behavior)
+// I2C bus selection:
+// - splitIECLines=1: OLED typically on I2C-1 (pins 3/5) -> i2cBusMaster=1
+// - splitIECLines=0: OLED typically on I2C-0 (pins 27/28) -> i2cBusMaster=0
+i2cBusMaster = 1
+i2cLcdAddress = 60	// decimal, shifted (60 == 0x78)
+i2cLcdOnContrast = 127
+i2cScan = 0
+i2cLcdUseCBMChar = 1
 
-// If you have hardware with a peizo buzzer (the type without a generator) then you can use this option to hear the head step
-// use SoundOnGPIO = 1 for GPIO
-// use SoundOnGPIO = 0 for DMA Sound (=default)
-// use SoundOnGPIO = -1 for disabling sound
+// Head step sound (optional).
+// For this Pi Zero W variant:
+// SoundOnGPIO = 1  -> GPIO buzzer (supported)
+// SoundOnGPIO = 0  -> DMA sound (not supported in this variant; avoid)
+// SoundOnGPIO = -1 -> disable
 SoundOnGPIO = 1
-SoundOnGPIODuration = 1000 // Length of buzz in micro seconds
-SoundOnGPIOFreq = 150 // Frequency of buzz in Hz
+SoundOnGPIODuration = 1000 // microseconds
+SoundOnGPIOFreq = 150      // Hz
 
-// You can remap the physical button functions
-// numbers correspond to the standard board layout
-//buttonEnter = 1
-//buttonUp = 2
-//buttonDown = 3
-//buttonBack = 4
-//buttonInsert = 5
-
-//ROTARY:
+// Rotary encoder (KY-040)
 //
-// KY-040 Rotary Encoder Support
-//
-//    If you would like to use a KY-040 Rotary Encoder for browse menu up/down
-//    and select, you can enable it here.  Connect as follows:
-//
-//       GPIO 22  -  Menu up       -  Encoder pin A (CLK)
-//       GPIO 23  -  Menu down     -  Encoder pin B (DT)
-//       GPIO 27  -  Enter/Select  -  Encoder pushbutton (SW)
-//
-//    ** Using an encoder is incompatible with the button remapping.  You must
-//       use the default values of Enter=1, Up=2, Down=3, Back=4 and Insert=5.
-//
-//    ** This has only been tested using a Raspberry Pi 3.  Earlier models may
-//       or may not work as expected!
-//
-//    Please see dmRotary.h for full implementation details.
+// Rotary encoder is unsupported in this Pi Zero W variant, but the options
+// remain available for experimental use (may reduce emulation stability).
 //
 //RotaryEncoderEnable = 1
+//RotaryEncoderInvert = 0
 
-////////////////////////// Emulation Section 
 
-// If you would like to change the drive number then specify it here (8 is the default)
-//deviceID = 9
 
-// By default Pi1541 will search the root of the SD card for a ROM file and use this for ROM1.
-// The first file found with either of the following names will be used; d1541.rom, dos1541, d1541II, Jiffy.bin
-// You can override the default ROM1 by specifying it here
+// --- Emulation ---------------------------------------------------------------
+
+// ROMs
 ROM1 = dos1541
-//ROM1 = JiffyDOS_1541-II.bin
-// You can specify additional ROMS here (up to 7)
-// You can then use the function keys (F1-F7) on the keyboard to change which one you would like to use (only in browse mode and not in emulation mode)
-// You can also use the buttons to swap ROMs by holding down button 1 and pressing one other buttons 2-5
-// .LST files can also specify one of these ROMS that will automatically be selected when the LST file is loaded.
 ROM2 = dos1541ii
-//ROM3 = dos1541
-
-// Reference you 1581 ROM here
 ROM1581 = dos1581
-//ROM1581 = JiffyDOS_1581.bin
 
-// Enable RAMBoard emulation - 8k drive RAM expansion at 0x8000
-//RAMBOard = 1
+ChargenFont = chargen
 
-ChargenFont = chargen		// 8 bit font file
+// Determinism knobs (Pi Zero W):
+DisableHDMI = 1
+HeadLess = 1
+DisplayTemperature = 0
+DisplayPNGIcons = 0
+displayTracks = 0
+HDMIGraphIEC = 0
+HDMIDisplayIECActivity = 0
 
-///////////////////////////////// Pi1541 Behavior
-// The rate (in seconds) a long selection is scrolled
-scrollHighlightRate = 0.07
-
-// If using CBMFileBrowser then it is best to specify this option. When the computer resets the Pi will always revert back to the root folder ready to load CBMFileBrowser again.
+// FB64 (CBMFileBrowser) helpers
 OnResetChangeToStartingFolder = 1
-
-// If you use FB64 (CBMFileBrowser) and want to use a fast loader cartridge (AR6, EFL, FC3) to load it then use this option to automatically mount it. 
-AutoMountImage = fb.d64 // You MUST have a disk image in \1541 with this filename
-// If you use FB64 (CBMFileBrowser) and want Pi1541 to send all file names as lower case.
+AutoMountImage = fb.d64  // must exist in SD:/1541/
 LowercaseBrowseModeFilenames = 1
 
-// If you are using a FB128 in 128 mode you can get FB128 to auto boot using this option
-//AutoBootFB128 = 1
 
-// If you are using a 128 you can auto boot anything using this option
-// This over-rides AutoBootFB128
-//128BootSectorName = bootsect.128
 
-// If you would ever like to disable browse mode completely you can do so here
-//DisableSD2IECCommands = 1
+// --- Split Workflow Policy (boot + mounted exit) -----------------------------
 
-// change startup logo on oled - 1541ii or 1541classic
-//LcdLogoName = 1541ii
-LcdLogoName = 1541classic
-//LcdLogoName = customfile.raw
+// NoActive: what to do at boot if SD:/1541/_active_mount/ACTIVE.LST is missing/empty.
+//   service = enter MINI SERVICE
+//   browser = enter Pi-side file browser/menu
+NoActive = service
 
-// If you are using the Pi's composite video out then these options allow you to experiment with the display resolution
-//ScreenWidth = 512
-//ScreenHeight = 384
+// MountTap/MountHold: what ENTER/EJECT does while mounted (emulating).
+//   browser = leave emulation and return to file browser/menu
+//   service = leave emulation and enter MINI SERVICE (long-press only)
+//   stay    = ignore
+MountTap = browser
+MountHold = service
 
-// You can create 320x200 PNG files with the same name as your disk images. With this option turned on they will be displayed on the Pi's screen.
-DisplayPNGIcons = 1
-// Display Tracks on HDMI
-DisplayTrack = 0
+// ResetExit: what repeated reset does while mounted.
+//   stay    = ignore reset-exit (recommended)
+//   browser = exit to file browser/menu
+ResetExit = stay
 
-// If you would like to specify what file will be loaded by LOAD"*" in browse mode then specify it here
-//StarFileName = somefile
+// HoldMs: unified long-press threshold used for ENTER-hold (service) and DOWN-hold (next disk).
+HoldMs = 850
 
-// Alt-N creates a new disk image.
-// Names are formed automatically as autoname001.d64, autoname002.d64 etc...
-// change the base of the filename here
-//AutoBaseName = autoname
-// By default Alt-N creates a new D64 disk image.
-// If you rather it create a G64 then use this option.
-//NewDiskType = g64
 
-//QuickBoot = 0		// faster startup
-//ShowOptions = 0	// display some options on startup screen 
-//IgnoreReset = 0
 
-// This option will display the temperature of the Pi's CPU.
-// It should be about 52C anything above 75C is bad and there is something wrong with your hardware
-DisplayTemperature = 0  // may impact compatibility / timing of emulation
-DisableHDMI = 0         // same as headLess, compatibility with recent Pi1541 (>V1.24)
-// This option displays the IEC bus activity on the bottom of the Pi's screen
-HDMIGraphIEC = 0        // only if HDMI is enabled
-HDMIDisplayIECActivity = 0    // only if HDMI is enabled
+// --- Service Kernel (Circle) -------------------------------------------------
 
-/////////////////////////////// pottendo Pi1541 Options
-// this turns on/off HDMI output
-// headLess = 1 // replaced by DisableHDMI
-
-// Network configuration, WiFi needs a proper wpa_supplicant.conf configured for you SSID
-TZ = 2.0    // 2.0=CEST is default, use -5.0 for ET (e.g. New York/US), use 5.5 for New Delhi/IN
-netWifi = 0
+// WiFi join (wpa_supplicant) + DHCP while in MINI SERVICE only.
+// - Credentials: SD:/wpa_supplicant.conf
+// - WLAN firmware: SD:/firmware/
+netWifi = 1
+// Reserved/not implemented in this variant (service networking is WLAN-only).
+// Keep at 0.
 netEthernet = 0
-// Static network config, to avoid slow DHCP - not much sanity is done, so write properly
-useDHCP = 1 // get network config automatically, else set to '0' and define static network config below
-//IPAdress = 192.168.1.31
-//NetMask = 192.168.1.0
-//DefaultGateway = 192.168.1.1
-//DNSServer = 192.168.1.1
+
+// NOTE: service kernel currently supports WiFi only (no Ethernet).
+// NOTE: service kernel supports static IPv4 when DHCP is disabled (useDHCP=0).
+useDHCP = 1
+
+// Static IPv4 (only used when useDHCP=0).
+// NOTE: Option key is "IPAdress" (compat spelling).
+IPAdress = 192.168.1.31
+NetMask = 255.255.255.0
+DefaultGateway = 192.168.1.1
+DNSServer = 192.168.1.1
+
+// Modified disk export retention:
+// 0 = keep only the current session (no history), N > 0 = keep last N sessions
+// in SD:/1541/_temp_dirty_disks/
+TempSavedSessions = 5
+
+// TZ (hours from UTC) for service logs/time display if used.
+TZ = 0.0
