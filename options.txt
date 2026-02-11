@@ -9,7 +9,8 @@
 // --- HW ----------------------------------------------------------------------
 
 // Split IEC lines (Option B hardware).
-splitIECLines = 1
+// Keep 0 by default (Option A baseline); set 1 only if your wiring uses split lines.
+splitIECLines = 0
 
 // OLED (SSD1306 over I2C).
 LCDName = ssd1306_128x64
@@ -17,7 +18,7 @@ LCDName = ssd1306_128x64
 // I2C bus selection:
 // - splitIECLines=1: OLED typically on I2C-1 (pins 3/5) -> i2cBusMaster=1
 // - splitIECLines=0: OLED typically on I2C-0 (pins 27/28) -> i2cBusMaster=0
-i2cBusMaster = 1
+i2cBusMaster = 0
 i2cLcdAddress = 60	// decimal, shifted (60 == 0x78)
 i2cLcdOnContrast = 127
 i2cScan = 0
@@ -52,6 +53,7 @@ ROM1581 = dos1581
 ChargenFont = chargen
 
 // Determinism knobs (Pi Zero W):
+QuickBoot = 1          // mostly redundant now; keeps legacy boot delays bypassed
 DisableHDMI = 1
 HeadLess = 1
 DisplayTemperature = 0
