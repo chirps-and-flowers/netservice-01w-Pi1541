@@ -105,6 +105,7 @@ echo "Toolchain: ${actual_gcc_version}" >&2
 
 # Circle service kernel --------------------------------------------------------
 build_service() {
+  need lz4
   local stage
   stage="$("${ROOT}/tools/bootstrap-circle-stdlib.sh" "--${STAGE_MODE}")"
   [[ -d "$stage" ]] || die "circle-stdlib staging missing: $stage"
@@ -145,9 +146,14 @@ build_service() {
 
   [[ -f "${ROOT}/src/kernel.img" ]] || die "service kernel missing: ${ROOT}/src/kernel.img"
   cp -f "${ROOT}/src/kernel.img" "${OUT_DIR}/kernel_service.img"
+
+  # Chainloader prefers LZ4 when present; generate legacy-format payload.
+  lz4 -z -l -f "${OUT_DIR}/kernel_service.img" "${OUT_DIR}/kernel_service.lz4" >/dev/null
+
   # Clean up old artifact name(s) from earlier iterations.
   rm -f "${OUT_DIR}/kernel_srv.img"
   echo "OK: ${OUT_DIR}/kernel_service.img" >&2
+  echo "OK: ${OUT_DIR}/kernel_service.lz4" >&2
 }
 
 # Legacy emulator kernel -------------------------------------------------------
@@ -191,7 +197,7 @@ case "$MODE" in
 esac
 
 echo "Artifacts in ${OUT_DIR}:" >&2
-for f in kernel_pi1541.img kernel_chainloader.img kernel_service.img; do
+for f in kernel_pi1541.img kernel_chainloader.img kernel_service.img kernel_service.lz4; do
   [[ -f "${OUT_DIR}/${f}" ]] || continue
   ls -lh "${OUT_DIR}/${f}" >&2
 done

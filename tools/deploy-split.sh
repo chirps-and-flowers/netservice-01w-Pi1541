@@ -39,6 +39,7 @@ OUT_DIR="${ROOT}/build/out"
 
 EMU_SRC="${OUT_DIR}/kernel_pi1541.img"
 SRV_SRC="${OUT_DIR}/kernel_service.img"
+SRV_LZ4_SRC="${OUT_DIR}/kernel_service.lz4"
 CHAINLOADER_SRC="${OUT_DIR}/kernel_chainloader.img"
 
 EMU_DEST="${SD_MOUNT}/kernel.img"
@@ -51,6 +52,7 @@ CFG_DEST="${SD_MOUNT}/config.txt"
 [[ -d "${SD_MOUNT}" ]] || { echo "ERROR: SD mount point not found: ${SD_MOUNT}" >&2; exit 1; }
 [[ -f "${EMU_SRC}" ]] || { echo "ERROR: missing emu kernel: ${EMU_SRC}" >&2; exit 1; }
 [[ -f "${SRV_SRC}" ]] || { echo "ERROR: missing service kernel: ${SRV_SRC}" >&2; exit 1; }
+[[ -f "${SRV_LZ4_SRC}" ]] || { echo "ERROR: missing service lz4 kernel: ${SRV_LZ4_SRC}" >&2; exit 1; }
 [[ -f "${CHAINLOADER_SRC}" ]] || { echo "ERROR: missing chainloader kernel: ${CHAINLOADER_SRC}" >&2; exit 1; }
 CFG_BASE="${CFG_DEST}"
 if [[ ! -f "${CFG_DEST}" ]]; then
@@ -73,21 +75,23 @@ echo "== Deploy split kernels to ${SD_MOUNT} ==" >&2
 
 backup_file "${EMU_DEST}"
 backup_file "${SRV_DEST}"
+backup_file "${SRV_LZ4_DEST}"
 backup_file "${CHAINLOADER_DEST}"
 
 cp -f "${EMU_SRC}" "${EMU_DEST}"
 cp -f "${SRV_SRC}" "${SRV_DEST}"
+cp -f "${SRV_LZ4_SRC}" "${SRV_LZ4_DEST}"
 cp -f "${CHAINLOADER_SRC}" "${CHAINLOADER_DEST}"
 
-# Chainloader prefers .lz4 when present; remove stale service lz4 variants so
-# the freshly deployed kernel_srv.img is guaranteed to boot.
-rm -f "${SRV_LZ4_DEST}" "${SRV_IMG_LZ4_DEST}"
+# Keep only canonical service LZ4 name used by chainloader.
+rm -f "${SRV_IMG_LZ4_DEST}"
 
 echo "Installed:" >&2
 echo "  emu     -> ${EMU_DEST} ($(stat -c %s "${EMU_DEST}") bytes)" >&2
 echo "  service -> ${SRV_DEST} ($(stat -c %s "${SRV_DEST}") bytes)" >&2
+echo "  srv-lz4 -> ${SRV_LZ4_DEST} ($(stat -c %s "${SRV_LZ4_DEST}") bytes)" >&2
 echo "  chainld -> ${CHAINLOADER_DEST} ($(stat -c %s "${CHAINLOADER_DEST}") bytes)" >&2
-echo "  cleanup -> removed stale ${SRV_LZ4_DEST##*/} / ${SRV_IMG_LZ4_DEST##*/} if present" >&2
+echo "  cleanup -> removed stale ${SRV_IMG_LZ4_DEST##*/} if present" >&2
 
 echo "Boot mode: ${BOOT_MODE}" >&2
 
