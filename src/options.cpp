@@ -135,6 +135,11 @@ Options::Options(void)
 	, logoDisplayDelay(0)
 	, showOptions(0)
 	, displayPNGIcons(0)
+	, holdMs(850)
+	, noActiveDest(MountDest::Service)
+	, mountTapDest(MountDest::Browser)
+	, mountHoldDest(MountDest::Service)
+	, resetExitDest(MountDest::Stay)
 	, soundOnGPIO(0)
 	, soundOnGPIODuration(1000)
 	, soundOnGPIOFreq(1200)
@@ -207,6 +212,34 @@ Options::Options(void)
 			Name = value; \
 	}
 
+static Options::MountDest ParseMountDest(const char *value, Options::MountDest defaultValue, bool allowService)
+{
+	if (!value || !value[0])
+		return defaultValue;
+
+	// Allow numeric values too (0/1/2) but only if the whole string is numeric.
+	char *endptr = 0;
+	long n = strtol(value, &endptr, 0);
+	if (endptr != value && *endptr == '\0')
+	{
+		if (n == 0)
+			return Options::MountDest::Stay;
+		if (n == 1)
+			return Options::MountDest::Browser;
+		if (n == 2)
+			return allowService ? Options::MountDest::Service : defaultValue;
+		return defaultValue;
+	}
+
+	if (strcasecmp(value, "stay") == 0)
+		return Options::MountDest::Stay;
+	if (strcasecmp(value, "browser") == 0)
+		return Options::MountDest::Browser;
+	if (allowService && strcasecmp(value, "service") == 0)
+		return Options::MountDest::Service;
+	return defaultValue;
+}
+
 void Options::Process(char* buffer)
 {
 	SetData(buffer);
@@ -216,6 +249,30 @@ void Options::Process(char* buffer)
 	{
 		/*char* equals = */GetToken();
 		char* pValue = GetToken();
+
+		// New short options (preferred).
+		if (strcasecmp(pOption, "HoldMs") == 0)
+		{
+			int nValue = GetDecimal(pValue);
+			if (nValue != INVALID_VALUE)
+				holdMs = (unsigned) nValue;
+		}
+		else if (strcasecmp(pOption, "NoActive") == 0)
+		{
+			noActiveDest = ParseMountDest(pValue, noActiveDest, true /*allowService*/);
+		}
+		else if (strcasecmp(pOption, "MountTap") == 0)
+		{
+			mountTapDest = ParseMountDest(pValue, mountTapDest, false /*allowService*/);
+		}
+		else if (strcasecmp(pOption, "MountHold") == 0)
+		{
+			mountHoldDest = ParseMountDest(pValue, mountHoldDest, true /*allowService*/);
+		}
+		else if (strcasecmp(pOption, "ResetExit") == 0)
+		{
+			resetExitDest = ParseMountDest(pValue, resetExitDest, false /*allowService*/);
+		}
 
 		if ((strcasecmp(pOption, "Font") == 0) || (strcasecmp(pOption, "ChargenFont") == 0))
 		{

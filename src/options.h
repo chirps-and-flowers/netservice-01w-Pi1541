@@ -43,6 +43,13 @@ protected:
 class Options : public TextParser
 {
 public:
+	enum class MountDest : u8
+	{
+		Stay = 0,
+		Browser = 1,
+		Service = 2,
+	};
+
 	Options(void);
 
 	void Process(char* buffer);
@@ -67,6 +74,15 @@ public:
 	inline unsigned int LogoDisplayDelay() const { return logoDisplayDelay; }
 	inline unsigned int ShowOptions() const { return showOptions; }
 	inline unsigned int DisplayPNGIcons() const { return displayPNGIcons; }
+
+	// Unified long-press threshold (ms) used for all "hold" gestures.
+	inline unsigned int HoldMs() const { return holdMs; }
+
+	// Behavior policy for the split workflow.
+	inline MountDest NoActive() const { return noActiveDest; }
+	inline MountDest MountTap() const { return mountTapDest; }
+	inline MountDest MountHold() const { return mountHoldDest; }
+	inline MountDest ResetExit() const { return resetExitDest; }
 	inline int SoundOnGPIO() const { return soundOnGPIO; }
 	inline unsigned int SoundOnGPIODuration() const { return soundOnGPIODuration; }
 	inline unsigned int SoundOnGPIOFreq() const { return soundOnGPIOFreq; }
@@ -157,6 +173,14 @@ private:
 	unsigned int logoDisplayDelay;
 	unsigned int showOptions;
 	unsigned int displayPNGIcons;
+
+	// Split workflow options (new, short names).
+	unsigned int holdMs;
+	MountDest noActiveDest;
+	MountDest mountTapDest;
+	MountDest mountHoldDest;
+	MountDest resetExitDest;
+
 	int soundOnGPIO;
 	unsigned int soundOnGPIODuration;
 	unsigned int soundOnGPIOFreq;

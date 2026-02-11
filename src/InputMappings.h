@@ -71,6 +71,7 @@ protected:
 	bool downButtonPressedPrev;
 	bool downButtonHoldConsumed;
 	unsigned downButtonHoldCounter;
+	unsigned holdCycles;
 
 	unsigned keyboardNumLetter;
 	unsigned inputROMOrDevice;
@@ -114,6 +115,16 @@ public:
 	void SetKeyboardBrowseLCDScreen(bool value)
 	{
 		keyboardBrowseLCDScreen = value;
+	}
+
+	// Long-press threshold used in emulation mode button handling.
+	// This is loop-count based (~1MHz) to keep the emulation hot path simple.
+	void SetHoldMs(unsigned ms)
+	{
+		if (ms == 0)
+			holdCycles = 0xFFFFFFFFu; // effectively "never"
+		else
+			holdCycles = ms * 1000u;
 	}
 
 #if defined(EXPERIMENTALZERO)

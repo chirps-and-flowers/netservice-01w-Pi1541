@@ -53,6 +53,7 @@ InputMappings::InputMappings()
 	, downButtonPressedPrev(false)
 	, downButtonHoldConsumed(false)
 	, downButtonHoldCounter(0)
+	, holdCycles(850000) // default hold threshold; overridden by HoldMs
 {
 }
 
@@ -161,13 +162,12 @@ void InputMappings::CheckButtonsEmulationMode()
 	// Keep the emulation hot path minimal and deterministic:
 	// - poll button "released" state (no repeat acceleration)
 	// - use loop-count holds for short/long actions
-	static const unsigned kHoldCycles = 800000; // ~0.80s at ~1MHz loop
 	const bool downPressed = !IEC_Bus::GetInputButtonReleased(INPUT_BUTTON_DOWN);
 	const bool enterPressed = !IEC_Bus::GetInputButtonReleased(INPUT_BUTTON_ENTER);
 
 	if (downPressed)
 	{
-		if (!downButtonHoldConsumed && ++downButtonHoldCounter >= kHoldCycles)
+		if (!downButtonHoldConsumed && ++downButtonHoldCounter >= holdCycles)
 		{
 			SetButtonFlag(NEXT_FLAG);
 			downButtonHoldConsumed = true;
@@ -188,7 +188,7 @@ void InputMappings::CheckButtonsEmulationMode()
 
 	if (enterPressed)
 	{
-		if (!enterButtonHoldConsumed && ++enterButtonHoldCounter >= kHoldCycles)
+		if (!enterButtonHoldConsumed && ++enterButtonHoldCounter >= holdCycles)
 		{
 			SetButtonFlag(SERVICE_FLAG);
 			enterButtonHoldConsumed = true;
