@@ -12,6 +12,13 @@
 #include <stdio.h>
 
 #include "service.h"
+#include "shim.h"
+#include "options.h"
+
+static bool IsZeroIPv4(const u8 a[4])
+{
+	return a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0;
+}
 
 #define _DRIVE "SD:"
 #define _FIRMWARE_PATH _DRIVE "/firmware/"
@@ -85,8 +92,37 @@ boolean CServiceKernel::wifi_start(void)
 		m_Net = nullptr;
 	}
 
-	// Service kernel uses DHCP (static IPv4 not implemented).
-	m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+	const Options *opt = service_options();
+	const bool use_dhcp = !opt || opt->GetDHCP();
+
+	const u8 *ip = service_static_ip();
+	const u8 *nm = service_static_nm();
+	const u8 *gw = service_static_gw();
+	const u8 *dns = service_static_dns();
+
+	if (!use_dhcp)
+	{
+		if (IsZeroIPv4(ip) || IsZeroIPv4(nm))
+		{
+			m_Logger.Write("service", LogError, "wifi: static IPv4 enabled but missing IPAdress/NetMask");
+			m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+		}
+		else
+		{
+			m_Logger.Write("service", LogNotice, "wifi: using static IPv4");
+			m_Net = new CNetSubSystem(const_cast<u8 *>(ip),
+						  const_cast<u8 *>(nm),
+						  const_cast<u8 *>(gw),
+						  const_cast<u8 *>(dns),
+						  DEFAULT_HOSTNAME,
+						  NetDeviceTypeWLAN);
+		}
+	}
+	else
+	{
+		m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+	}
+
 	if (!m_Net)
 	{
 		m_Logger.Write("service", LogError, "wifi: net subsystem alloc failed");

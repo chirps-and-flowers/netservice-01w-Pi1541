@@ -114,6 +114,11 @@ void setNM(const char *nm) { parse_ipv4(nm, g_nm); }
 void setGW(const char *gw) { parse_ipv4(gw, g_gw); }
 void setDNS(const char *dns) { parse_ipv4(dns, g_dns); }
 
+const u8 *service_static_ip(void) { return g_ip; }
+const u8 *service_static_nm(void) { return g_nm; }
+const u8 *service_static_gw(void) { return g_gw; }
+const u8 *service_static_dns(void) { return g_dns; }
+
 // -----------------------------------------------------------------------------
 // FatFs glue required by Circle addon
 
