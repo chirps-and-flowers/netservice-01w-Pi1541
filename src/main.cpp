@@ -162,6 +162,29 @@ u32 clockCycles1MHz;
 static const char* kActiveMountDir = "/1541/_active_mount";
 static const char* kActiveListName = "ACTIVE.LST";
 static const char* kActiveListPath = "/1541/_active_mount/ACTIVE.LST";
+
+static bool IsActiveListEmpty(void)
+{
+	FIL fp;
+	if (f_open(&fp, kActiveListPath, FA_READ) != FR_OK)
+		return true;
+
+	char buf[64];
+	UINT br = 0;
+	FRESULT res = f_read(&fp, buf, sizeof(buf), &br);
+	f_close(&fp);
+
+	if (res != FR_OK || br == 0)
+		return true;
+
+	for (UINT i = 0; i < br; ++i)
+	{
+		char c = buf[i];
+		if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+			return false;
+	}
+	return true;
+}
 static const unsigned kActiveMaxImages = 16;
 static FILINFO* g_activeFileInfos[kActiveMaxImages];
 static unsigned g_activeFileInfoCount = 0;
@@ -1056,6 +1079,10 @@ EXIT_TYPE __not_in_flash_func(Emulate1541) (FileBrowser* fileBrowser)
 	unsigned numberOfImagesMax = numberOfImages;
 	int exitCyclesRemaining = 0;
 
+	const Options::MountDest mountTapDest = options.MountTap();
+	const Options::MountDest mountHoldDest = options.MountHold();
+	const Options::MountDest resetExitDest = options.ResetExit();
+
 	if (numberOfImagesMax > 10)
 		numberOfImagesMax = 10;
 
@@ -1209,8 +1236,14 @@ EXIT_TYPE __not_in_flash_func(Emulate1541) (FileBrowser* fileBrowser)
 #endif
 		inputMappings->CheckButtonsEmulationMode();
 
-		const bool serviceRequested = inputMappings->ServiceRequested();
-		bool exitEmulation = inputMappings->Exit() || serviceRequested;
+		const bool tapExit = inputMappings->Exit();
+		const bool holdExit = inputMappings->ServiceRequested();
+
+		const bool serviceRequested = holdExit && (mountHoldDest == Options::MountDest::Service);
+		bool exitEmulation =
+			(tapExit && (mountTapDest == Options::MountDest::Browser))
+			|| (holdExit && (mountHoldDest == Options::MountDest::Browser))
+			|| serviceRequested;
 		bool exitDoAutoLoad = inputMappings->AutoLoad();
 
 		// We have now output so HERE is where the next phi2 cycle starts.
@@ -1239,9 +1272,10 @@ extern int mount_new;
 			exitEmulation = true;
 		}
 #endif		
-		if ((emulating == IEC_COMMANDS) || (resetCount > 10) || exitEmulation || exitDoAutoLoad)
+		const bool resetExit = (resetExitDest == Options::MountDest::Browser) && (resetCount > 10);
+		if ((emulating == IEC_COMMANDS) || resetExit || exitEmulation || exitDoAutoLoad)
 		{
-			if (reset)
+			if (resetExit && reset)
 				exitReason = EXIT_RESET;
 			if (exitEmulation)
 				exitReason = serviceRequested ? EXIT_SERVICE : EXIT_KEYBOARD;
@@ -1366,6 +1400,10 @@ EXIT_TYPE Emulate1581(FileBrowser* fileBrowser)
 	int resetCount = 0;
 	int exitCyclesRemaining = 0;
 
+	const Options::MountDest mountTapDest = options.MountTap();
+	const Options::MountDest mountHoldDest = options.MountHold();
+	const Options::MountDest resetExitDest = options.ResetExit();
+
 	unsigned numberOfImages = diskCaddy.GetNumberOfImages();
 	unsigned numberOfImagesMax = numberOfImages;
 	if (numberOfImagesMax > 10)
@@ -1477,8 +1515,14 @@ EXIT_TYPE Emulate1581(FileBrowser* fileBrowser)
 #endif
 		inputMappings->CheckButtonsEmulationMode();
 
-		const bool serviceRequested = inputMappings->ServiceRequested();
-		bool exitEmulation = inputMappings->Exit() || serviceRequested;
+		const bool tapExit = inputMappings->Exit();
+		const bool holdExit = inputMappings->ServiceRequested();
+
+		const bool serviceRequested = holdExit && (mountHoldDest == Options::MountDest::Service);
+		bool exitEmulation =
+			(tapExit && (mountTapDest == Options::MountDest::Browser))
+			|| (holdExit && (mountHoldDest == Options::MountDest::Browser))
+			|| serviceRequested;
 		bool exitDoAutoLoad = inputMappings->AutoLoad();
 
 
@@ -1504,9 +1548,10 @@ EXIT_TYPE Emulate1581(FileBrowser* fileBrowser)
 			exitEmulation = true;
 		}
 #endif
-		if ((emulating == IEC_COMMANDS) || (resetCount > 10) || exitEmulation || exitDoAutoLoad)
+		const bool resetExit = (resetExitDest == Options::MountDest::Browser) && (resetCount > 10);
+		if ((emulating == IEC_COMMANDS) || resetExit || exitEmulation || exitDoAutoLoad)
 		{
-			if (reset)
+			if (resetExit && reset)
 				exitReason = EXIT_RESET;
 			if (exitEmulation)
 				exitReason = serviceRequested ? EXIT_SERVICE : EXIT_KEYBOARD;
@@ -2404,6 +2449,27 @@ extern "C"
 		write32(ARM_GPIO_GPCLR0, 0xFFFFFFFF);	//XXXPICO?
 #endif		
 		InitialiseLCD();
+
+#if !defined(__CIRCLE__) && !defined(__PICO2__) && !defined(ESP32)
+		// Split workflow boot policy:
+		// If ACTIVE.LST is missing/empty, optionally jump straight into MINI SERVICE.
+		if (IsActiveListEmpty() && (options.NoActive() == Options::MountDest::Service))
+		{
+			if (screenLCD)
+			{
+				const char *msg = "MINI SERVICE";
+				screenLCD->Clear(0);
+				int x = (int)(screenLCD->Width() - (screenLCD->GetFontWidth() * strlen(msg))) / 2;
+				if (x < 0) x = 0;
+				int y = (int)(screenLCD->Height() - screenLCD->GetFontHeight()) / 2;
+				if (y < 0) y = 0;
+				screenLCD->PrintText(false, (u32)x, (u32)y, (char *)msg);
+				screenLCD->RefreshScreen();
+			}
+			ChainBootChainloader("/kernel_chainloader.img");
+		}
+#endif
+
 		DisplayLogo();
 
 #if not defined(EXPERIMENTALZERO)
@@ -2463,6 +2529,7 @@ extern "C"
 		//USPiMouseRegisterStatusHandler(MouseHandler);
 
 		CheckOptions();
+		inputMappings->SetHoldMs(options.HoldMs());
 
 		IEC_Bus::SetSplitIECLines(options.SplitIECLines());
 		IEC_Bus::SetInvertIECInputs(options.InvertIECInputs());
