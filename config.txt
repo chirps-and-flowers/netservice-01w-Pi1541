@@ -1,100 +1,50 @@
-# PiZero model
+# Pi Zero W (01W) only
+#
+# Default: boot the legacy (cycle-exact) emulator kernel from high memory.
+# The service kernel is entered via chainboot (long-press) and does not need
+# to be selected here during normal operation.
+
+
+
+# --- Boot Target --------------------------------------------------------------
+
 [pi0]
-# force_turbo = 1 in combination with over_voltage invalidates warranty!
-# may improve compatibility, and needed for Steve's original kernels
-force_turbo=1
-arm_freq=1100
-over_voltage=6
-sdram_freq=450
-sdram_over_voltage=2
-boot_delay=1
 arm_64bit=0
-gpu_mem=0
-#kernel_address=0x1f00000   # uncomment on PiZero, otherwise its used also for PiZero2W of 32bit boots... and fails
-kernel=kernel-Pi0.img
 
-# this is for the PiZero 2W, merged with [p0]!
-[pi02]
-arm_freq=1400
-over_voltage=4
-sdram_freq=450
-sdram_over_voltage=1
-boot_delay=1
-gpu_mem=0
-hdmi_group=2
-hdmi_mode=16
-# select 32- or 64-bit mode
-arm_64bit=0
-# Pi 3 & Pi Zero 2W, 32bit
-kernel=kernel8-32.img
-# Pi 3 & Pi Zero 2W, 64bit
-#kernel=kernel8.img
 
-# P1 models
-[pi1]
-# force_turbo = 1 in combination with over_voltage invalidates warranty!
-# may improve compatibility, and needed for Steve's original kernels
-force_turbo=1
-arm_freq=1100
-over_voltage=6
-sdram_freq=450
-sdram_over_voltage=2
-boot_delay=1
-arm_64bit=0
-gpu_mem=0
+
+# --- Emulator Kernel ----------------------------------------------------------
+
+# Legacy emulator kernel (cycle-exact) lives in high memory.
 kernel_address=0x1f00000
-kernel=kernel-P1BPlus.img
-#kernel=kernel-P1BRev1.img
-#kernel=kernel-P1BRev2.img
+kernel=kernel.img
 
-[pi2] 
-# untested
-#arm_freq=1100
-#sdram_freq=500
-#over_voltage=6
-#kernel_address=0x1f00000
-#kernel=kernel-Pi2.img
 
-# all Pi3 variants
-[pi3]
-# force_turbo = 1 in combination with over_voltage invalidates warranty!
-# may improve compatibility, and needed for Steve's original kernels
-arm_freq=1400
+
+# --- Legacy Baseline Clocks ---------------------------------------------------
+
+# Pi Zero W friendly; reference:
+# https://www.lemon64.com/forum/viewtopic.php?t=84150
+# force_turbo=1 in combination with over_voltage invalidates warranty!
+arm_freq=1000
+core_freq=500
+sdram_freq=450
+over_voltage=2
 force_turbo=1
-over_voltage=4
-sdram_freq=500
-sdram_over_voltage=1
-temp_soft_limit=70
-temp_limit=80
 boot_delay=1
-gpu_mem=0
-hdmi_group=2
-hdmi_mode=16
-# select 32- or 64-bit mode
-arm_64bit=0     # set to 0 for original kernels!
-# Pi 3 & Pi Zero 2W, 32bit
-kernel=kernel8-32.img
-# Pi 3 & Pi Zero 2W, 64bit
-#kernel=kernel8.img
-# Pi3 legacy 32bit kernel
-#force_turbo = 1        # needed for original kernels, which are 32bit => also set "arm_64bit = 0" above!
-#kernel_address=0x1f00000
-#kernel=kernel.img
+temp_limit=80
 
-# all Pi4 variants
-[pi4]
-hdmi_force_hotplug=1   # Force HDMI output even if no monitor detected
-hdmi_group=2           # Set display mode to DMT (monitor)
-hdmi_mode=16           # Set resolution to 1024x768 @ 60Hz
-max_framebuffers=2
-# select 32- or 64-bit mode
-arm_64bit=0
-# Pi 4, 32bit
-kernel=kernel7l.img
-# Pi 4, 64bit
-#kernel=kernel8-rpi4.img
+
+
+# --- Service Dev Override -----------------------------------------------------
+
+# Dev note: boot service kernel directly (Circle, load addr 0x8000).
+# kernel_address=0x8000
+# kernel=kernel_srv.img
+
+
+
+# --- Global -------------------------------------------------------------------
 
 [all]
-#enable_uart=1
-# Disable compensation for displays with overscan
 disable_overscan=1
