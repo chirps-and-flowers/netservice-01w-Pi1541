@@ -234,11 +234,6 @@ void service_init(void)
 	}
 
 	// Now that we have an address, show it.
-	CString ip;
-	net->GetConfig()->GetIPAddress()->Format(&ip);
-	// Omit the "IP:" prefix so IPv4 fits on one OLED line.
-	ServiceDrawReadyScreen((const char *) ip);
-
 	// HTTP control plane.
 	if (!g_http_server)
 	{
@@ -246,8 +241,15 @@ void service_init(void)
 		if (!g_http_server)
 		{
 			Kernel.log("service: http server alloc failed");
+			ServiceShow2("MINI SERVICE", "NO HTTP");
+			return;
 		}
 	}
+
+	// Show READY only after the HTTP server exists.
+	CString ip;
+	net->GetConfig()->GetIPAddress()->Format(&ip);
+	ServiceDrawReadyScreen((const char *) ip);
 }
 
 const Options *service_options(void)
@@ -261,6 +263,7 @@ bool service_run(void)
 	ServiceEnsureLCD();
 	bool shownJoining = false;
 	bool shownReady = false;
+	bool shownHttpFail = false;
 	char shownIp[32] = {0};
 
 	// If we don't get link+IP, periodically restart the Wi-Fi stack so service
@@ -325,6 +328,28 @@ bool service_run(void)
 		{
 			notReadyMs = 0;
 
+			// If service_init exited before DHCP came up, start the server now.
+			if (!g_http_server)
+			{
+				g_http_server = new CServiceHttpServer(net);
+				if (!g_http_server)
+				{
+					Kernel.log("service: http server alloc failed");
+					if (!shownHttpFail)
+					{
+						ServiceDrawReadyScreen("IP: (http fail)");
+						shownHttpFail = true;
+						shownReady = false;
+						shownJoining = false;
+						shownIp[0] = '\0';
+					}
+					Kernel.get_scheduler()->MsSleep(kNetPollMs);
+					continue;
+				}
+			}
+
+			shownHttpFail = false;
+
 			CString ip;
 			net->GetConfig()->GetIPAddress()->Format(&ip);
 			const char *ipText = (const char *) ip;
@@ -335,16 +360,6 @@ bool service_run(void)
 				shownIp[sizeof(shownIp) - 1] = '\0';
 				shownReady = true;
 				shownJoining = false;
-			}
-
-			// If service_init exited before DHCP came up, start the server now.
-			if (!g_http_server)
-			{
-				g_http_server = new CServiceHttpServer(net);
-				if (!g_http_server)
-				{
-					Kernel.log("service: http server alloc failed");
-				}
 			}
 		}
 
