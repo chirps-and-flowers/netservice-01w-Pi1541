@@ -33,7 +33,12 @@
 #include "SpinLock.h"
 #endif
 #include "ROMs.h"
+// Compile-time feature switches for optional UI/image functionality in the Pi Zero W (01W) netservice variant.
+#include "pi1541_features.h"
+// Pi Zero W (01W) netservice variant: STBI (PNG decode) is optional; when disabled we avoid linking image decode code paths.
+#if PI1541_ENABLE_STBI
 #include "stb_image.h"
+#endif
 extern "C"
 {
 #if defined(__CIRCLE__)
@@ -71,8 +76,14 @@ extern "C"
 #include "chainboot_helper_stub.h"
 #endif
 
+// Pi Zero W (01W) netservice variant: HDMI splash asset (PNG) is only needed when STBI-based splash is enabled.
+#if PI1541_ENABLE_STBI
 #include "logo.h"
+#endif
+// Pi Zero W (01W) netservice variant: OLED boot bitmap set is optional and can be compiled out for lean builds.
+#if PI1541_ENABLE_OLED_BOOTLOGO
 #include "ssd_logo.h"
+#endif
 #include "version.h"
 
 static unsigned ctb, cta;
@@ -422,6 +433,9 @@ void InitialiseLCD()
 		screenLCD->ClearInit(0); // sh1106 needs this
 
 		bool logo_done = false;
+		// Optional OLED boot logo set for the Pi Zero W (01W) netservice variant.
+		// When disabled, we always fall back to plain text splash below.
+#if PI1541_ENABLE_OLED_BOOTLOGO
 		if ( (height >= 64) && (strcasecmp(options.GetLcdLogoName(), "1541ii") == 0) )
 		{
 			screenLCD->PlotRawImage(logo_ssd_1541ii, 0, 0, width, 64);
@@ -449,6 +463,7 @@ void InitialiseLCD()
 				logo_done = true;
 			}
 		}
+#endif
 
 		if (!logo_done)
 		{
@@ -1997,7 +2012,8 @@ static bool AttemptToLoadROM(const char* ROMName, int index)
 
 static void DisplayLogo()
 {
-#if not defined(EXPERIMENTALZERO)
+	// Pi Zero W (01W) netservice variant: optional HDMI PNG splash; disabled in lean builds to reduce image decode cost.
+#if !defined(EXPERIMENTALZERO) && PI1541_ENABLE_STBI
 	int w;
 	int h;
 	int channels_in_file;
