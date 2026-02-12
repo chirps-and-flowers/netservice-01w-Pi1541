@@ -76,6 +76,33 @@ static void ServiceDrawReadyScreen(const char *ip_line)
 	g_screenLCD->SwapBuffers();
 }
 
+static void ServiceDrawBootHandoffSplash(void)
+{
+	if (!g_screenLCD)
+	{
+		return;
+	}
+
+	// Match the legacy OLED fallback splash placement from src/main.cpp.
+	char splash[32];
+	snprintf(splash, sizeof(splash), "Pi1541 V1.25");
+
+	int x = (g_screenLCD->Width() - 8 * (int) strlen(splash)) / 2;
+	int y = (g_screenLCD->Height() - 16) / 2;
+	if (x < 0)
+	{
+		x = 0;
+	}
+	if (y < 0)
+	{
+		y = 0;
+	}
+
+	g_screenLCD->Clear(0);
+	g_screenLCD->PrintText(false, (u32) x, (u32) y, splash, 0x0);
+	g_screenLCD->RefreshScreen();
+}
+
 static void ServiceLoadOptions(void)
 {
 	FIL fp;
@@ -276,19 +303,14 @@ bool service_run(void)
 	{
 		if (CServiceHttpServer::IsTeardownRequested())
 		{
-			// Stop accepting new HTTP connections, clear the OLED, then give the
-			// commit response a short moment to flush before reboot.
+			// Stop accepting new HTTP connections, draw handoff splash, then give
+			// the commit response a short moment to flush before reboot.
 			if (g_http_server)
 			{
 				g_http_server->RequestStop();
 			}
 
-			// Clear the OLED right before reboot so we don't leave stale service UI.
-			if (g_screenLCD)
-			{
-				g_screenLCD->Clear(0);
-				g_screenLCD->RefreshScreen();
-			}
+			ServiceDrawBootHandoffSplash();
 
 			Kernel.get_scheduler()->MsSleep(150);
 			return true;
