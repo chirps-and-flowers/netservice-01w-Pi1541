@@ -105,7 +105,8 @@ boolean CServiceKernel::wifi_start(void)
 		if (IsZeroIPv4(ip) || IsZeroIPv4(nm))
 		{
 			m_Logger.Write("service", LogError, "wifi: static IPv4 enabled but missing IPAdress/NetMask");
-			m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+			// Keep hostname disabled in this variant to match the old working path.
+			m_Net = new CNetSubSystem(0, 0, 0, 0, nullptr, NetDeviceTypeWLAN);
 		}
 		else
 		{
@@ -114,13 +115,13 @@ boolean CServiceKernel::wifi_start(void)
 						  const_cast<u8 *>(nm),
 						  const_cast<u8 *>(gw),
 						  const_cast<u8 *>(dns),
-						  DEFAULT_HOSTNAME,
+						  nullptr,
 						  NetDeviceTypeWLAN);
 		}
 	}
 	else
 	{
-		m_Net = new CNetSubSystem(0, 0, 0, 0, DEFAULT_HOSTNAME, NetDeviceTypeWLAN);
+		m_Net = new CNetSubSystem(0, 0, 0, 0, nullptr, NetDeviceTypeWLAN);
 	}
 
 	if (!m_Net)

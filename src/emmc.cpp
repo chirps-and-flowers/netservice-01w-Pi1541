@@ -848,6 +848,45 @@ void CEMMCDevice::IssueCommandInt(u32 cmd_reg, u32 argument, int timeout)
 			DEBUG_LOG("Multi block transfer\r\n");
 		}
 #endif
+#if defined(PI1541_CHAINBOOT_HELPER)
+		assert(m_block_size <= 1024);		// internal FIFO size of EMMC
+		assert(((u32) m_buf & 3) == 0);
+		assert((m_block_size & 3) == 0);
+
+		u32 *pData =(u32 *) m_buf;
+		for (unsigned blk = 0; blk < m_blocks_to_transfer; ++blk)
+		{
+			TimeoutWait(EMMC_INTERRUPT, wr_irpt | 0x8000, 1, timeout);
+			irpts = read32(EMMC_INTERRUPT);
+			write32(EMMC_INTERRUPT, 0xffff0000 | wr_irpt);
+
+			if ((irpts &(0xffff0000 | wr_irpt)) != wr_irpt)
+			{
+#ifdef EMMC_DEBUG
+				DEBUG_LOG("Error occured whilst waiting for data ready interrupt\r\n");
+#endif
+				m_last_error = irpts & 0xffff0000;
+				m_last_interrupt = irpts;
+				return;
+			}
+
+			size_t length = m_block_size;
+			if (is_write)
+			{
+				for (; length > 0; length -= 4)
+				{
+					write32(EMMC_DATA, *pData++);
+				}
+			}
+			else
+			{
+				for (; length > 0; length -= 4)
+				{
+					*pData++ = read32(EMMC_DATA);
+				}
+			}
+		}
+#else
 		TimeoutWait(EMMC_INTERRUPT, wr_irpt | 0x8000, 1, timeout);
 		irpts = read32(EMMC_INTERRUPT);
 		write32(EMMC_INTERRUPT, 0xffff0000 | wr_irpt);
@@ -885,6 +924,7 @@ void CEMMCDevice::IssueCommandInt(u32 cmd_reg, u32 argument, int timeout)
 				*pData++ = read32(EMMC_DATA);
 			}
 		}
+#endif
 
 #ifdef EMMC_DEBUG2
 		DEBUG_LOG("Block transfer complete\r\n");
@@ -1428,7 +1468,11 @@ int CEMMCDevice::CardReset(void)
 #ifdef EMMC_DEBUG2
 			DEBUG_LOG("Card is busy, retrying\r\n");
 #endif
+#if defined(PI1541_CHAINBOOT_HELPER)
+			delay_us(50000);
+#else
 			delay_us(500000);
+#endif
 		}
 	}
 
@@ -1979,6 +2023,15 @@ int CEMMCDevice::DoWrite(u8 *buf, size_t buf_size, u32 block_no)
 
 int CEMMCDevice::TimeoutWait(unsigned reg, unsigned mask, int value, unsigned usec)
 {
+#if defined(PI1541_CHAINBOOT_HELPER)
+	const unsigned start = read32(ARM_SYSTIMER_CLO);
+	while (((read32(reg) & mask) ? !value : value))
+	{
+		if ((unsigned)(read32(ARM_SYSTIMER_CLO) - start) >= usec)
+			return -1;
+	}
+	return 0;
+#else
 	unsigned nCount = usec / 1000;
 
 	do
@@ -1995,4 +2048,5 @@ int CEMMCDevice::TimeoutWait(unsigned reg, unsigned mask, int value, unsigned us
 	while(nCount--);
 
 	return -1;
+#endif
 }

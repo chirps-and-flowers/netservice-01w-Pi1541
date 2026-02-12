@@ -24,6 +24,32 @@ static ScreenLCD *g_screenLCD = nullptr;
 static CServiceHttpServer *g_http_server = nullptr;
 static Options g_options;
 
+static void ServiceTrace(const char *tag)
+{
+	if (!tag || !tag[0])
+	{
+		return;
+	}
+
+	FIL fp;
+	if (f_open(&fp, "SD:/pi1541_helper.log", FA_OPEN_ALWAYS | FA_WRITE) != FR_OK)
+	{
+		return;
+	}
+
+	if (f_lseek(&fp, f_size(&fp)) != FR_OK)
+	{
+		f_close(&fp);
+		return;
+	}
+
+	char line[128];
+	snprintf(line, sizeof(line), "svc:%s t=%u\r\n", tag, CTimer::GetClockTicks());
+	UINT bw = 0;
+	f_write(&fp, line, (UINT)strlen(line), &bw);
+	f_close(&fp);
+}
+
 static void ServiceShow2(const char *line0, const char *line1)
 {
 	if (!g_screenLCD)
@@ -207,76 +233,26 @@ static void ServiceEnsureLCD(void)
 void service_init(void)
 {
 	Kernel.log("service: init");
+	ServiceTrace("init_enter");
 	ServiceLoadOptions();
+	ServiceTrace("options_loaded");
 	ServiceLoadFontROM();
+	ServiceTrace("font_loaded");
 	ServiceEnsureLCD();
+	ServiceTrace("lcd_ready");
 
 	ServiceShow2("MINI SERVICE", "WLAN INIT");
+	ServiceTrace("wifi_start_begin");
 	if (!Kernel.wifi_start())
 	{
+		ServiceTrace("wifi_start_fail");
 		ServiceShow2("MINI SERVICE", "WLAN FAIL");
 		return;
 	}
+	ServiceTrace("wifi_start_ok");
 
-	// Show READY-style screen while associating and waiting for DHCP.
+	// Do not block service boot on link/DHCP; service_run() handles async readiness.
 	ServiceDrawReadyScreen("IP: (joining)");
-	for (unsigned i = 0; i < 150; ++i) // ~15s
-	{
-		if (Kernel.wifi_is_connected())
-		{
-			break;
-		}
-		Kernel.get_scheduler()->MsSleep(100);
-	}
-
-	if (!Kernel.wifi_is_connected())
-	{
-		ServiceShow2("MINI SERVICE", "NO LINK");
-		return;
-	}
-
-	// Wait for DHCP (net subsystem running) and then show the IP.
-	CNetSubSystem *net = Kernel.get_net();
-	if (!net)
-	{
-		ServiceShow2("MINI SERVICE", "NO NET");
-		return;
-	}
-
-	// Give DHCP time to come up.
-	ServiceDrawReadyScreen("IP: (joining)");
-	for (unsigned i = 0; i < 150; ++i) // ~15s
-	{
-		if (net->IsRunning() && !net->GetConfig()->GetIPAddress()->IsNull())
-		{
-			break;
-		}
-		Kernel.get_scheduler()->MsSleep(100);
-	}
-
-	if (!net->IsRunning() || net->GetConfig()->GetIPAddress()->IsNull())
-	{
-		ServiceShow2("MINI SERVICE", "NO DHCP");
-		return;
-	}
-
-	// Now that we have an address, show it.
-	// HTTP control plane.
-	if (!g_http_server)
-	{
-		g_http_server = new CServiceHttpServer(net);
-		if (!g_http_server)
-		{
-			Kernel.log("service: http server alloc failed");
-			ServiceShow2("MINI SERVICE", "NO HTTP");
-			return;
-		}
-	}
-
-	// Show READY only after the HTTP server exists.
-	CString ip;
-	net->GetConfig()->GetIPAddress()->Format(&ip);
-	ServiceDrawReadyScreen((const char *) ip);
 }
 
 const Options *service_options(void)
@@ -287,6 +263,7 @@ const Options *service_options(void)
 bool service_run(void)
 {
 	Kernel.log("service: run");
+	ServiceTrace("run_enter");
 	ServiceEnsureLCD();
 	bool shownJoining = false;
 	bool shownReady = false;
@@ -295,7 +272,7 @@ bool service_run(void)
 
 	// If we don't get link+IP, periodically restart the Wi-Fi stack so service
 	// mode can recover from flaky association / DHCP behavior.
-	static constexpr unsigned kNetPollMs = 100;
+	static constexpr unsigned kNetPollMs = 50;
 	static constexpr unsigned kNetRetryMs = 30 * 1000;
 	unsigned notReadyMs = 0;
 
@@ -303,6 +280,7 @@ bool service_run(void)
 	{
 		if (CServiceHttpServer::IsTeardownRequested())
 		{
+			ServiceTrace("teardown_request");
 			// Stop accepting new HTTP connections, draw handoff splash, then give
 			// the commit response a short moment to flush before reboot.
 			if (g_http_server)
@@ -318,9 +296,33 @@ bool service_run(void)
 
 		CNetSubSystem *net = Kernel.get_net();
 		const bool linkUp = Kernel.wifi_is_connected();
-		const bool dhcpReady = net && net->IsRunning() && !net->GetConfig()->GetIPAddress()->IsNull();
+		const bool netRunning = net && net->IsRunning();
+		const bool ipReady = netRunning && !net->GetConfig()->GetIPAddress()->IsNull();
 
-		if (!linkUp || !dhcpReady)
+		// Start HTTP as soon as the net stack is running. IP assignment can complete
+		// after server bring-up; UI stays in joining state until IP is non-zero.
+		if (!g_http_server && netRunning)
+		{
+			g_http_server = new CServiceHttpServer(net);
+			if (!g_http_server)
+			{
+				ServiceTrace("http_alloc_fail");
+				Kernel.log("service: http server alloc failed");
+				if (!shownHttpFail)
+				{
+					ServiceDrawReadyScreen("IP: (http fail)");
+					shownHttpFail = true;
+					shownReady = false;
+					shownJoining = false;
+					shownIp[0] = '\0';
+				}
+				Kernel.get_scheduler()->MsSleep(kNetPollMs);
+				continue;
+			}
+			ServiceTrace("http_ready");
+		}
+
+		if (!linkUp || !ipReady)
 		{
 			// Retry bring-up only before the HTTP server starts, so we never tear
 			// down the net stack while requests could still be in flight.
@@ -328,6 +330,7 @@ bool service_run(void)
 			{
 				if (notReadyMs >= kNetRetryMs)
 				{
+					ServiceTrace("wifi_retry");
 					Kernel.log("service: retrying Wi-Fi bring-up");
 					(void) Kernel.wifi_start();
 					notReadyMs = 0;
@@ -350,26 +353,6 @@ bool service_run(void)
 		{
 			notReadyMs = 0;
 
-			// If service_init exited before DHCP came up, start the server now.
-			if (!g_http_server)
-			{
-				g_http_server = new CServiceHttpServer(net);
-				if (!g_http_server)
-				{
-					Kernel.log("service: http server alloc failed");
-					if (!shownHttpFail)
-					{
-						ServiceDrawReadyScreen("IP: (http fail)");
-						shownHttpFail = true;
-						shownReady = false;
-						shownJoining = false;
-						shownIp[0] = '\0';
-					}
-					Kernel.get_scheduler()->MsSleep(kNetPollMs);
-					continue;
-				}
-			}
-
 			shownHttpFail = false;
 
 			CString ip;
@@ -382,9 +365,11 @@ bool service_run(void)
 				shownIp[sizeof(shownIp) - 1] = '\0';
 				shownReady = true;
 				shownJoining = false;
+				ServiceTrace("ready_screen");
 			}
 		}
 
+		Kernel.get_scheduler()->Yield();
 		Kernel.get_scheduler()->MsSleep(kNetPollMs);
 	}
 

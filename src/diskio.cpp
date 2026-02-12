@@ -8,6 +8,7 @@
 /*-----------------------------------------------------------------------*/
 #include "diskio.h"		/* FatFs lower layer API */
 #include "debug.h"
+#include "rpiHardware.h"
 
 #define SD_BLOCK_SIZE		512
 
@@ -56,12 +57,26 @@ int sd_card_init(struct block_device **dev)
 size_t sd_read(uint8_t *buf, size_t buf_size, uint32_t block_no)
 {
 //	g_pLogger->Write("", LogNotice, "sd_read %d", block_no);
-	return pEMMC->DoRead(buf, buf_size, block_no);
+#if defined(PI1541_CHAINBOOT_HELPER)
+	DataMemBarrier();
+#endif
+	size_t res = pEMMC->DoRead(buf, buf_size, block_no);
+#if defined(PI1541_CHAINBOOT_HELPER)
+	DataMemBarrier();
+#endif
+	return res;
 }
 
 size_t sd_write(uint8_t *buf, size_t buf_size, uint32_t block_no)
 {
-	return pEMMC->DoWrite(buf, buf_size, block_no);
+#if defined(PI1541_CHAINBOOT_HELPER)
+	DataMemBarrier();
+#endif
+	size_t res = pEMMC->DoWrite(buf, buf_size, block_no);
+#if defined(PI1541_CHAINBOOT_HELPER)
+	DataMemBarrier();
+#endif
+	return res;
 }
 
 #else
@@ -211,13 +226,9 @@ DRESULT disk_read (
 	//DEBUG_LOG("r pdrv = %d\r\n", pdrv);
 	if (pdrv == 0)
 	{
-		for (UINT s = 0; s < count; ++s)
+		if (sd_read(buff, count * SD_BLOCK_SIZE, sector) < (count * SD_BLOCK_SIZE))
 		{
-			if (sd_read(buff, SD_BLOCK_SIZE, sector + s) < SD_BLOCK_SIZE)
-			{
-				return RES_ERROR;
-			}
-			buff += SD_BLOCK_SIZE;
+			return RES_ERROR;
 		}
 		return RES_OK;
 	}
