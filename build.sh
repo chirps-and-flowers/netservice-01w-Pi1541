@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build.sh - Pi Zero 1 W (01W) build entrypoint for this fork.
+# build.sh - Pi Zero W (01W) netservice variant build entrypoint.
 #
 # Default: build both kernels
 #   - Legacy emulator kernel (RASPPI=0)
 #   - Circle service kernel (Circle RASPPI=1 / Pi1-class, runs on Pi Zero)
 #
-# This script is intentionally Pi Zero 1 W only. Keep it minimal and deterministic for simpler debugging.
+# This script is intentionally Pi Zero W (01W) netservice variant only.
+# Keep it minimal and deterministic for simpler debugging.
 #
 # NOTE: "RASPPI" means different things in different parts of this codebase:
 # - Pi1541 legacy build: RASPPI=0 selects the Pi Zero / ARMv6 (ARM1176) path.

@@ -1,4 +1,4 @@
-# Pi Zero W (01W) only
+# Pi Zero W (01W) netservice variant only
 #
 # Default: boot the legacy (cycle-exact) emulator kernel from high memory.
 # The service kernel is entered via chainboot (long-press) and does not need
