@@ -25,9 +25,9 @@ i2cScan = 0
 i2cLcdUseCBMChar = 1
 
 // Head step sound (optional).
-// For this Pi Zero W variant:
+// For the Pi Zero W (01W) netservice variant:
 // SoundOnGPIO = 1  -> GPIO buzzer (supported)
-// SoundOnGPIO = 0  -> DMA sound (not supported in this variant; avoid)
+// SoundOnGPIO = 0  -> DMA sound (not supported in this Pi Zero W (01W) netservice variant; avoid)
 // SoundOnGPIO = -1 -> disable
 SoundOnGPIO = 1
 SoundOnGPIODuration = 1000 // microseconds
@@ -35,8 +35,8 @@ SoundOnGPIOFreq = 150      // Hz
 
 // Rotary encoder (KY-040)
 //
-// Rotary encoder is unsupported in this Pi Zero W variant, but the options
-// remain available for experimental use (may reduce emulation stability).
+// Not supported in the Pi Zero W (01W) netservice variant.
+// You can still enable it for experiments, but it may reduce emulation stability.
 //
 //RotaryEncoderEnable = 1
 //RotaryEncoderInvert = 0
@@ -99,7 +99,7 @@ HoldMs = 850
 // - Credentials: SD:/wpa_supplicant.conf
 // - WLAN firmware: SD:/firmware/
 netWifi = 1
-// Reserved/not implemented in this variant (service networking is WLAN-only).
+// Reserved/not implemented in the Pi Zero W (01W) netservice variant (service networking is WLAN-only).
 // Keep at 0.
 netEthernet = 0
 

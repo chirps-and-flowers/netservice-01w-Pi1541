@@ -1,6 +1,6 @@
 # Service HTTP (01W)
 
-This is the **LAN control plane** exposed by the **service kernel** on **Pi Zero W (01W)**.
+This is the **LAN control plane** exposed by the **service kernel** on the **Pi Zero W (01W) netservice variant**.
 
 Goal: accept uploads + write SD manifests safely, then let the emulator kernel consume them.
 
