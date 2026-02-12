@@ -113,10 +113,11 @@ useDHCP = 1
 
 // Static IPv4 (only used when useDHCP=0).
 // NOTE: Option key is "IPAdress" (compat spelling).
-IPAdress = 192.168.1.31
-NetMask = 255.255.255.0
-DefaultGateway = 192.168.1.1
-DNSServer = 192.168.1.1
+// Uncomment and set values for your own LAN:
+//IPAdress = 192.168.1.31
+//NetMask = 255.255.255.0
+//DefaultGateway = 192.168.1.1
+//DNSServer = 192.168.1.1
 
 // Modified disk export retention:
 // 0 = keep only the current session (no history), N > 0 = keep last N sessions
