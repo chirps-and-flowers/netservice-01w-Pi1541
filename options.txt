@@ -64,6 +64,8 @@ HDMIDisplayIECActivity = 0
 
 // FB64 (CBMFileBrowser) helpers
 OnResetChangeToStartingFolder = 1
+// AutoMountImage is currently not supported in the default boot path for this
+// Pi Zero W (01W) netservice variant: ACTIVE.LST auto-mount runs first.
 AutoMountImage = fb.d64  // must exist in SD:/1541/
 LowercaseBrowseModeFilenames = 1
 
