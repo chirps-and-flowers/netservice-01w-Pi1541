@@ -9,19 +9,23 @@ set -euo pipefail
 #     build/out/kernel_service.img -> SD:/kernel_srv.img
 #     build/out/kernel_chainloader.img  -> SD:/kernel_chainloader.img
 # - optionally select which kernel [pi0] boots via SD:/config.txt
+# - optionally sync text configs from repo root to SD:
+#     options.txt, config.txt
 #
 # Usage:
-#   ./tools/deploy-split.sh <sd_mount_point> [--boot=emu|service]
+#   ./tools/deploy-split.sh <sd_mount_point> [--boot=emu|service] [--sync-text]
 #
 # Examples:
 #   ./tools/deploy-split.sh /run/media/$USER/PI1541 --boot=service
 #   ./tools/deploy-split.sh /run/media/$USER/PI1541 --boot=emu
+#   ./tools/deploy-split.sh /run/media/$USER/PI1541 --boot=emu --sync-text
 
 SD_MOUNT="${1:-}"
 BOOT_MODE="emu"
+SYNC_TEXT="0"
 
 if [[ -z "${SD_MOUNT}" ]]; then
-  echo "Usage: $0 <sd_mount_point> [--boot=emu|service]" >&2
+  echo "Usage: $0 <sd_mount_point> [--boot=emu|service] [--sync-text]" >&2
   exit 2
 fi
 
@@ -30,6 +34,7 @@ for arg in "$@"; do
   case "$arg" in
     --boot=emu) BOOT_MODE="emu" ;;
     --boot=service) BOOT_MODE="service" ;;
+    --sync-text) SYNC_TEXT="1" ;;
     *) echo "ERROR: unknown arg: ${arg}" >&2; exit 2 ;;
   esac
 done
@@ -48,18 +53,20 @@ CHAINLOADER_DEST="${SD_MOUNT}/kernel_chainloader.img"
 SRV_LZ4_DEST="${SD_MOUNT}/kernel_srv.lz4"
 SRV_IMG_LZ4_DEST="${SD_MOUNT}/kernel_srv.img.lz4"
 CFG_DEST="${SD_MOUNT}/config.txt"
+OPT_DEST="${SD_MOUNT}/options.txt"
+
+CFG_SRC="${ROOT}/config.txt"
+OPT_SRC="${ROOT}/options.txt"
 
 [[ -d "${SD_MOUNT}" ]] || { echo "ERROR: SD mount point not found: ${SD_MOUNT}" >&2; exit 1; }
 [[ -f "${EMU_SRC}" ]] || { echo "ERROR: missing emu kernel: ${EMU_SRC}" >&2; exit 1; }
 [[ -f "${SRV_SRC}" ]] || { echo "ERROR: missing service kernel: ${SRV_SRC}" >&2; exit 1; }
 [[ -f "${SRV_LZ4_SRC}" ]] || { echo "ERROR: missing service lz4 kernel: ${SRV_LZ4_SRC}" >&2; exit 1; }
 [[ -f "${CHAINLOADER_SRC}" ]] || { echo "ERROR: missing chainloader kernel: ${CHAINLOADER_SRC}" >&2; exit 1; }
-CFG_BASE="${CFG_DEST}"
-if [[ ! -f "${CFG_DEST}" ]]; then
-  # Recover from a partial deploy (or user customizations) by using the newest backup as base.
-  CFG_BASE="$(ls -1t "${SD_MOUNT}/config.txt.bak."* 2>/dev/null | head -n1 || true)"
-  [[ -n "${CFG_BASE}" ]] || { echo "ERROR: missing config.txt on SD and no config.txt.bak.* found" >&2; exit 1; }
-  echo "WARN: config.txt missing; using base: ${CFG_BASE}" >&2
+
+if [[ "${SYNC_TEXT}" == "1" ]]; then
+  [[ -f "${OPT_SRC}" ]] || { echo "ERROR: missing repo options.txt: ${OPT_SRC}" >&2; exit 1; }
+  [[ -f "${CFG_SRC}" ]] || { echo "ERROR: missing repo config.txt: ${CFG_SRC}" >&2; exit 1; }
 fi
 
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -94,10 +101,25 @@ echo "  chainld -> ${CHAINLOADER_DEST} ($(stat -c %s "${CHAINLOADER_DEST}") byte
 echo "  cleanup -> removed stale ${SRV_IMG_LZ4_DEST##*/} if present" >&2
 
 echo "Boot mode: ${BOOT_MODE}" >&2
+echo "Text sync: ${SYNC_TEXT}" >&2
 
-# For config.txt we want a copy, not a move (so we can always read/patch the base).
-if [[ -f "${CFG_DEST}" ]]; then
-  cp -f "${CFG_DEST}" "${CFG_DEST}.bak.${TS}"
+CFG_BASE="${CFG_DEST}"
+if [[ "${SYNC_TEXT}" == "1" ]]; then
+  backup_file "${OPT_DEST}"
+  backup_file "${CFG_DEST}"
+
+  cp -f "${OPT_SRC}" "${OPT_DEST}"
+  cp -f "${CFG_SRC}" "${CFG_DEST}"
+else
+  if [[ -f "${CFG_DEST}" ]]; then
+    # For config.txt we want a copy, not a move (so we can always read/patch the base).
+    cp -f "${CFG_DEST}" "${CFG_DEST}.bak.${TS}"
+  else
+    # Recover from a partial deploy (or user customizations) by using the newest backup as base.
+    CFG_BASE="$(ls -1t "${SD_MOUNT}/config.txt.bak."* 2>/dev/null | head -n1 || true)"
+    [[ -n "${CFG_BASE}" ]] || { echo "ERROR: missing config.txt on SD and no config.txt.bak.* found" >&2; exit 1; }
+    echo "WARN: config.txt missing; using base: ${CFG_BASE}" >&2
+  fi
 fi
 
 python3 - <<PY
