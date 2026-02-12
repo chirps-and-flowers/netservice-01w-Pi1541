@@ -468,9 +468,11 @@ void InitialiseLCD()
 		if (!logo_done)
 		{
 			snprintf(tempBuffer, tempBufferSize, "Pi1541 V%d.%02d" CV, versionMajor, versionMinor);
-			int x = (width - 8*strlen(tempBuffer) ) /2;
-			int y = (height-16)/2;
-			screenLCD->PrintText(false, x, y, tempBuffer, 0x0);
+			int x = (int) (width - (screenLCD->GetFontWidth() * strlen(tempBuffer))) / 2;
+			if (x < 0) x = 0;
+			int y = (int) (height - screenLCD->GetFontHeight()) / 2;
+			if (y < 0) y = 0;
+			screenLCD->PrintText(false, (u32) x, (u32) y, tempBuffer, 0x0);
 		}
 		screenLCD->RefreshScreen();
 		if (!options.QuickBoot()) MsDelay(3000);
@@ -1918,7 +1920,11 @@ extern int mount_new;
 					{
 						const char *msg = "MINI SERVICE";
 						screenLCD->Clear(0);
-						screenLCD->PrintText(false, 0, 0, (char*)msg);
+						int x = (int) (screenLCD->Width() - (screenLCD->GetFontWidth() * strlen(msg))) / 2;
+						if (x < 0) x = 0;
+						int y = (int) (screenLCD->Height() - screenLCD->GetFontHeight()) / 2;
+						if (y < 0) y = 0;
+						screenLCD->PrintText(false, (u32) x, (u32) y, (char *) msg);
 						screenLCD->RefreshScreen();
 					}
 					ChainBootChainloader("/kernel_chainloader.img");

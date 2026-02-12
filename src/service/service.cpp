@@ -24,54 +24,6 @@ static ScreenLCD *g_screenLCD = nullptr;
 static CServiceHttpServer *g_http_server = nullptr;
 static Options g_options;
 
-static void ServiceTrace(const char *tag)
-{
-	if (!tag || !tag[0])
-	{
-		return;
-	}
-
-	FIL fp;
-	if (f_open(&fp, "SD:/pi1541_helper.log", FA_OPEN_ALWAYS | FA_WRITE) != FR_OK)
-	{
-		return;
-	}
-
-	if (f_lseek(&fp, f_size(&fp)) != FR_OK)
-	{
-		f_close(&fp);
-		return;
-	}
-
-	char line[128];
-	snprintf(line, sizeof(line), "svc:%s t=%u\r\n", tag, CTimer::GetClockTicks());
-	UINT bw = 0;
-	f_write(&fp, line, (UINT)strlen(line), &bw);
-	f_close(&fp);
-}
-
-static void ServiceShow2(const char *line0, const char *line1)
-{
-	if (!g_screenLCD)
-	{
-		return;
-	}
-
-	g_screenLCD->Clear(0);
-
-	const u32 fh = g_screenLCD->GetFontHeight();
-	if (line0)
-	{
-		g_screenLCD->PrintText(false, 0, 0, (char *) line0);
-	}
-	if (line1)
-	{
-		g_screenLCD->PrintText(false, 0, fh, (char *) line1);
-	}
-
-	g_screenLCD->RefreshScreen();
-}
-
 static void ServiceDrawReadyScreen(const char *ip_line)
 {
 	if (!g_screenLCD)
@@ -113,8 +65,10 @@ static void ServiceDrawBootHandoffSplash(void)
 	char splash[32];
 	snprintf(splash, sizeof(splash), "Pi1541 V1.25");
 
-	int x = (g_screenLCD->Width() - 8 * (int) strlen(splash)) / 2;
-	int y = (g_screenLCD->Height() - 16) / 2;
+	const int fw = (int) g_screenLCD->GetFontWidth();
+	const int fh = (int) g_screenLCD->GetFontHeight();
+	int x = (g_screenLCD->Width() - (fw * (int) strlen(splash))) / 2;
+	int y = (g_screenLCD->Height() - fh) / 2;
 	if (x < 0)
 	{
 		x = 0;
@@ -147,49 +101,6 @@ static void ServiceLoadOptions(void)
 
 	g_options.Process((char *) buf);
 	Kernel.log("service: options loaded");
-}
-
-static void ServiceLoadFontROM(void)
-{
-	const char *fontName = g_options.GetRomFontName();
-	if (!fontName)
-	{
-		return;
-	}
-
-	// Match legacy behavior: allow absolute path, or look under /roms/.
-	char altPath[256] = "/roms/";
-	if (fontName[0] != '/')
-	{
-		strncat(altPath, fontName, sizeof(altPath) - strlen(altPath) - 1);
-	}
-	else
-	{
-		altPath[0] = '\0';
-	}
-
-	FIL fp;
-	if ((FR_OK != f_open(&fp, fontName, FA_READ)) &&
-	    (altPath[0] == '\0' || FR_OK != f_open(&fp, altPath, FA_READ)))
-	{
-		Kernel.log("service: font ROM not found");
-		return;
-	}
-
-	static unsigned char fontBuf[4096];
-	UINT bytesRead = 0;
-	(void) f_read(&fp, fontBuf, sizeof(fontBuf), &bytesRead);
-	f_close(&fp);
-
-	if (bytesRead == sizeof(fontBuf))
-	{
-		CBMFont = fontBuf;
-		Kernel.log("service: font ROM loaded");
-	}
-	else
-	{
-		Kernel.log("service: font ROM wrong size (%u)", (unsigned) bytesRead);
-	}
 }
 
 static void ServiceEnsureLCD(void)
@@ -233,25 +144,16 @@ static void ServiceEnsureLCD(void)
 void service_init(void)
 {
 	Kernel.log("service: init");
-	ServiceTrace("init_enter");
 	ServiceLoadOptions();
-	ServiceTrace("options_loaded");
-	ServiceLoadFontROM();
-	ServiceTrace("font_loaded");
-	ServiceEnsureLCD();
-	ServiceTrace("lcd_ready");
-
-	ServiceShow2("MINI SERVICE", "WLAN INIT");
-	ServiceTrace("wifi_start_begin");
 	if (!Kernel.wifi_start())
 	{
-		ServiceTrace("wifi_start_fail");
-		ServiceShow2("MINI SERVICE", "WLAN FAIL");
+		ServiceEnsureLCD();
+		ServiceDrawReadyScreen("IP: (no net)");
 		return;
 	}
-	ServiceTrace("wifi_start_ok");
 
 	// Do not block service boot on link/DHCP; service_run() handles async readiness.
+	ServiceEnsureLCD();
 	ServiceDrawReadyScreen("IP: (joining)");
 }
 
@@ -263,7 +165,6 @@ const Options *service_options(void)
 bool service_run(void)
 {
 	Kernel.log("service: run");
-	ServiceTrace("run_enter");
 	ServiceEnsureLCD();
 	bool shownJoining = false;
 	bool shownReady = false;
@@ -280,7 +181,6 @@ bool service_run(void)
 	{
 		if (CServiceHttpServer::IsTeardownRequested())
 		{
-			ServiceTrace("teardown_request");
 			// Stop accepting new HTTP connections, draw handoff splash, then give
 			// the commit response a short moment to flush before reboot.
 			if (g_http_server)
@@ -306,7 +206,6 @@ bool service_run(void)
 			g_http_server = new CServiceHttpServer(net);
 			if (!g_http_server)
 			{
-				ServiceTrace("http_alloc_fail");
 				Kernel.log("service: http server alloc failed");
 				if (!shownHttpFail)
 				{
@@ -319,7 +218,6 @@ bool service_run(void)
 				Kernel.get_scheduler()->MsSleep(kNetPollMs);
 				continue;
 			}
-			ServiceTrace("http_ready");
 		}
 
 		if (!linkUp || !ipReady)
@@ -330,7 +228,6 @@ bool service_run(void)
 			{
 				if (notReadyMs >= kNetRetryMs)
 				{
-					ServiceTrace("wifi_retry");
 					Kernel.log("service: retrying Wi-Fi bring-up");
 					(void) Kernel.wifi_start();
 					notReadyMs = 0;
@@ -360,12 +257,14 @@ bool service_run(void)
 			const char *ipText = (const char *) ip;
 			if (!shownReady || strcmp(shownIp, ipText) != 0)
 			{
-				ServiceDrawReadyScreen(ipText);
+				char ipLine[40];
+				const bool usePrefix = strlen(ipText) <= 12;
+				snprintf(ipLine, sizeof(ipLine), usePrefix ? "IP: %s" : "%s", ipText);
+				ServiceDrawReadyScreen(ipLine);
 				strncpy(shownIp, ipText, sizeof(shownIp) - 1);
 				shownIp[sizeof(shownIp) - 1] = '\0';
 				shownReady = true;
 				shownJoining = false;
-				ServiceTrace("ready_screen");
 			}
 		}
 
