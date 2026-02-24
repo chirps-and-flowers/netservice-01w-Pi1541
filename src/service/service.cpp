@@ -24,6 +24,43 @@ static ScreenLCD *g_screenLCD = nullptr;
 static CServiceHttpServer *g_http_server = nullptr;
 static Options g_options;
 
+static const char kNetStatusPath[] = "SD:/wpa_net_status_log.txt";
+static unsigned g_net_attempt = 0;
+static unsigned g_boot_err_show_ms = 0;
+
+static void ServiceNetStatusWrite(const char *code, const char *detail)
+{
+	if (!code || !code[0])
+	{
+		return;
+	}
+
+	FIL fp;
+	if (f_open(&fp, kNetStatusPath, FA_OPEN_ALWAYS | FA_WRITE) != FR_OK)
+	{
+		return;
+	}
+
+	(void) f_lseek(&fp, f_size(&fp));
+
+	char line[256];
+	if (detail && detail[0])
+	{
+		snprintf(line, sizeof(line), "code=%s attempt=%u ticks=%u %s\r\n",
+			 code, g_net_attempt, (unsigned) CTimer::GetClockTicks(), detail);
+	}
+	else
+	{
+		snprintf(line, sizeof(line), "code=%s attempt=%u ticks=%u\r\n",
+			 code, g_net_attempt, (unsigned) CTimer::GetClockTicks());
+	}
+
+	UINT bw = 0;
+	(void) f_write(&fp, line, (UINT) strlen(line), &bw);
+	(void) f_sync(&fp);
+	f_close(&fp);
+}
+
 static void ServiceDrawReadyScreen(const char *ip_line)
 {
 	if (!g_screenLCD)
@@ -80,6 +117,17 @@ static void ServiceDrawBootHandoffSplash(void)
 
 	g_screenLCD->Clear(0);
 	g_screenLCD->PrintText(false, (u32) x, (u32) y, splash, 0x0);
+	g_screenLCD->RefreshScreen();
+}
+
+static void ServiceBlinkScreen(void)
+{
+	if (!g_screenLCD)
+	{
+		return;
+	}
+
+	g_screenLCD->Clear(0);
 	g_screenLCD->RefreshScreen();
 }
 
@@ -145,10 +193,13 @@ void service_init(void)
 {
 	Kernel.log("service: init");
 	ServiceLoadOptions();
+	++g_net_attempt;
 	if (!Kernel.wifi_start())
 	{
+		ServiceNetStatusWrite("WIFI_START_FAIL", "stage=init");
 		ServiceEnsureLCD();
-		ServiceDrawReadyScreen("IP: (no net)");
+		ServiceDrawReadyScreen("ERR: WIFI_START_FAIL");
+		g_boot_err_show_ms = 1500;
 		return;
 	}
 
@@ -169,13 +220,57 @@ bool service_run(void)
 	bool shownJoining = false;
 	bool shownReady = false;
 	bool shownHttpFail = false;
+	bool shownRetry = false;
+	unsigned retryBannerMs = 0;
 	char shownIp[32] = {0};
+	char lastNetErr[32] = {0};
 
 	// If we don't get link+IP, periodically restart the Wi-Fi stack so service
 	// mode can recover from flaky association / DHCP behavior.
 	static constexpr unsigned kNetPollMs = 50;
 	static constexpr unsigned kNetRetryMs = 30 * 1000;
-	unsigned notReadyMs = 0;
+	static constexpr unsigned kAssocFailMs = 15 * 1000;
+	static constexpr unsigned kDhcpFailMs = 15 * 1000;
+	static constexpr unsigned kErrShowMs = 1500;
+	static constexpr unsigned kMaxLoggedRetries = 30;
+	unsigned assocWaitMs = 0;
+	unsigned dhcpWaitMs = 0;
+	unsigned errShowMs = g_boot_err_show_ms;
+	const bool useDhcp = g_options.GetDHCP();
+	unsigned retryCount = 0;
+	bool allowStatusLog = true;
+	g_boot_err_show_ms = 0;
+
+	auto SetNetErr = [&](const char *code, const char *detail) {
+		if (!code || !code[0])
+		{
+			return;
+		}
+
+		if (strncmp(lastNetErr, code, sizeof(lastNetErr) - 1) == 0)
+		{
+			return;
+		}
+
+		snprintf(lastNetErr, sizeof(lastNetErr), "%s", code);
+		if (allowStatusLog)
+		{
+			ServiceNetStatusWrite(code, detail);
+		}
+
+		if (g_screenLCD)
+		{
+			ServiceBlinkScreen();
+			ServiceDrawReadyScreen(code);
+			errShowMs = kErrShowMs;
+			shownJoining = false;
+			shownReady = false;
+			shownHttpFail = false;
+			shownRetry = false;
+			retryBannerMs = 0;
+			shownIp[0] = '\0';
+		}
+	};
 
 	for (;;)
 	{
@@ -199,9 +294,8 @@ bool service_run(void)
 		const bool netRunning = net && net->IsRunning();
 		const bool ipReady = netRunning && !net->GetConfig()->GetIPAddress()->IsNull();
 
-		// Start HTTP as soon as the net stack is running. IP assignment can complete
-		// after server bring-up; UI stays in joining state until IP is non-zero.
-		if (!g_http_server && netRunning)
+		// Start HTTP only after both link and IP are ready.
+		if (!g_http_server && linkUp && ipReady)
 		{
 			g_http_server = new CServiceHttpServer(net);
 			if (!g_http_server)
@@ -222,35 +316,108 @@ bool service_run(void)
 
 		if (!linkUp || !ipReady)
 		{
-			// Retry bring-up only before the HTTP server starts, so we never tear
-			// down the net stack while requests could still be in flight.
-			if (!g_http_server)
+			const bool inErrFlash = errShowMs != 0;
+			const bool inBackoff = shownRetry && retryBannerMs != 0;
+
+			// Only measure/judge association/DHCP while we are actively "joining".
+			// During error flash/backoff we keep the UI stable and wait.
+			if (!inErrFlash && !inBackoff)
 			{
-				if (notReadyMs >= kNetRetryMs)
+				if (!linkUp)
 				{
-					Kernel.log("service: retrying Wi-Fi bring-up");
-					(void) Kernel.wifi_start();
-					notReadyMs = 0;
+					assocWaitMs += kNetPollMs;
+					dhcpWaitMs = 0;
+					if (assocWaitMs >= kAssocFailMs)
+					{
+						SetNetErr("WIFI_ASSOC_FAIL", "stage=assoc");
+					}
 				}
-				else
+				else if (!ipReady)
 				{
-					notReadyMs += kNetPollMs;
+					assocWaitMs = 0;
+					if (useDhcp)
+					{
+						dhcpWaitMs += kNetPollMs;
+						if (dhcpWaitMs >= kDhcpFailMs)
+						{
+							SetNetErr("DHCP_TIMEOUT", "stage=dhcp");
+						}
+					}
 				}
 			}
 
-			if (!shownJoining)
+			if (errShowMs)
 			{
-				ServiceDrawReadyScreen("IP: (joining)");
-				shownJoining = true;
-				shownReady = false;
-				shownIp[0] = '\0';
+				if (errShowMs <= kNetPollMs)
+				{
+					errShowMs = 0;
+				}
+				else
+				{
+					errShowMs -= kNetPollMs;
+				}
+			}
+			else if (shownRetry && retryBannerMs)
+			{
+				if (retryBannerMs <= kNetPollMs)
+				{
+					retryBannerMs = 0;
+					shownRetry = false;
+					lastNetErr[0] = '\0';
+					assocWaitMs = 0;
+					dhcpWaitMs = 0;
+				}
+				else
+				{
+					retryBannerMs -= kNetPollMs;
+				}
+			}
+			else if (!shownJoining)
+			{
+				if (!g_http_server && lastNetErr[0] && !shownRetry)
+				{
+					++g_net_attempt;
+					++retryCount;
+					if (allowStatusLog)
+					{
+						ServiceNetStatusWrite("WIFI_RETRY", "stage=timer");
+					}
+					if (allowStatusLog && retryCount > kMaxLoggedRetries)
+					{
+						ServiceNetStatusWrite("LOG_SUPPRESSED", "max_retries=30");
+						allowStatusLog = false;
+					}
+
+					char retryLine[32];
+					const unsigned retrySeconds = (kNetRetryMs + 999) / 1000;
+					snprintf(retryLine, sizeof(retryLine), "ERR: RETRY %uS", retrySeconds);
+					ServiceBlinkScreen();
+					ServiceDrawReadyScreen(retryLine);
+					shownRetry = true;
+					retryBannerMs = kNetRetryMs;
+					shownJoining = false;
+					shownReady = false;
+					shownHttpFail = false;
+					shownIp[0] = '\0';
+					assocWaitMs = 0;
+					dhcpWaitMs = 0;
+				}
+				else if (!shownRetry || retryBannerMs == 0)
+				{
+					ServiceDrawReadyScreen("IP: (joining)");
+					shownJoining = true;
+					shownReady = false;
+					shownIp[0] = '\0';
+				}
 			}
 		}
 		else
 		{
-			notReadyMs = 0;
+			assocWaitMs = 0;
+			dhcpWaitMs = 0;
 
 			shownHttpFail = false;
+			shownRetry = false;
 
 			CString ip;
 			net->GetConfig()->GetIPAddress()->Format(&ip);

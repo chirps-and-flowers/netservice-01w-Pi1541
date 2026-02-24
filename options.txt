@@ -101,6 +101,7 @@ HoldMs = 850
 
 // WiFi join (wpa_supplicant) + DHCP while in MINI SERVICE only.
 // - Credentials: SD:/wpa_supplicant.conf
+// - If WiFi login/join fails, check SD:/wpa_net_status_log.txt for details
 // - WLAN firmware: SD:/firmware/
 netWifi = 1
 // Reserved/not implemented in the Pi Zero W (01W) netservice variant (service networking is WLAN-only).
