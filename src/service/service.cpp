@@ -217,29 +217,89 @@ bool service_run(void)
 {
 	Kernel.log("service: run");
 	ServiceEnsureLCD();
-	bool shownJoining = false;
-	bool shownReady = false;
-	bool shownHttpFail = false;
-	bool shownRetry = false;
-	unsigned retryBannerMs = 0;
-	char shownIp[32] = {0};
-	char lastNetErr[32] = {0};
 
-	// If we don't get link+IP, periodically restart the Wi-Fi stack so service
-	// mode can recover from flaky association / DHCP behavior.
 	static constexpr unsigned kNetPollMs = 50;
 	static constexpr unsigned kNetRetryMs = 30 * 1000;
 	static constexpr unsigned kAssocFailMs = 15 * 1000;
 	static constexpr unsigned kDhcpFailMs = 15 * 1000;
 	static constexpr unsigned kErrShowMs = 1500;
 	static constexpr unsigned kMaxLoggedRetries = 30;
-	unsigned assocWaitMs = 0;
-	unsigned dhcpWaitMs = 0;
-	unsigned errShowMs = g_boot_err_show_ms;
+	static constexpr char kJoiningLine[] = "IP: (joining)";
+	static constexpr char kHttpFailLine[] = "IP: (http fail)";
+
+	struct ServiceUiState
+	{
+		bool shownJoining = false;
+		bool shownReady = false;
+		bool shownHttpFail = false;
+		bool shownRetry = false;
+		unsigned retryBannerMs = 0;
+		unsigned assocWaitMs = 0;
+		unsigned dhcpWaitMs = 0;
+		unsigned errShowMs = 0;
+		char shownIp[32] = {0};
+		char lastNetErr[32] = {0};
+	};
+
+	ServiceUiState ui;
+	ui.errShowMs = g_boot_err_show_ms;
+	g_boot_err_show_ms = 0;
+
 	const bool useDhcp = g_options.GetDHCP();
 	unsigned retryCount = 0;
 	bool allowStatusLog = true;
-	g_boot_err_show_ms = 0;
+
+	// OLED transition model:
+	// JOINING -> (ASSOC/DHCP timeout) -> ERR code flash -> ERR: RETRY 30S -> JOINING
+	// JOINING -> READY (HTTP started + IP assigned)
+	// READY -> link/IP lost -> JOINING
+
+	auto ResetNetWaitTimers = [&]() {
+		ui.assocWaitMs = 0;
+		ui.dhcpWaitMs = 0;
+	};
+
+	auto ResetDisplayedState = [&]() {
+		ui.shownJoining = false;
+		ui.shownReady = false;
+		ui.shownHttpFail = false;
+		ui.shownRetry = false;
+		ui.retryBannerMs = 0;
+		ui.shownIp[0] = '\0';
+	};
+
+	auto LogNetEvent = [&](const char *code, const char *detail) {
+		if (allowStatusLog)
+		{
+			ServiceNetStatusWrite(code, detail);
+		}
+	};
+
+	auto ShowStatusLine = [&](const char *line, bool blink) {
+		if (blink)
+		{
+			ServiceBlinkScreen();
+		}
+		ServiceDrawReadyScreen(line);
+		ResetDisplayedState();
+	};
+
+	auto EnterJoining = [&]() {
+		ServiceDrawReadyScreen(kJoiningLine);
+		ui.shownJoining = true;
+		ui.shownReady = false;
+		ui.shownIp[0] = '\0';
+	};
+
+	auto EnterBackoff = [&]() {
+		char retryLine[32];
+		const unsigned retrySeconds = (kNetRetryMs + 999) / 1000;
+		snprintf(retryLine, sizeof(retryLine), "ERR: RETRY %uS", retrySeconds);
+		ShowStatusLine(retryLine, true);
+		ui.shownRetry = true;
+		ui.retryBannerMs = kNetRetryMs;
+		ResetNetWaitTimers();
+	};
 
 	auto SetNetErr = [&](const char *code, const char *detail) {
 		if (!code || !code[0])
@@ -247,28 +307,18 @@ bool service_run(void)
 			return;
 		}
 
-		if (strncmp(lastNetErr, code, sizeof(lastNetErr) - 1) == 0)
+		if (strncmp(ui.lastNetErr, code, sizeof(ui.lastNetErr) - 1) == 0)
 		{
 			return;
 		}
 
-		snprintf(lastNetErr, sizeof(lastNetErr), "%s", code);
-		if (allowStatusLog)
-		{
-			ServiceNetStatusWrite(code, detail);
-		}
+		snprintf(ui.lastNetErr, sizeof(ui.lastNetErr), "%s", code);
+		LogNetEvent(code, detail);
 
 		if (g_screenLCD)
 		{
-			ServiceBlinkScreen();
-			ServiceDrawReadyScreen(code);
-			errShowMs = kErrShowMs;
-			shownJoining = false;
-			shownReady = false;
-			shownHttpFail = false;
-			shownRetry = false;
-			retryBannerMs = 0;
-			shownIp[0] = '\0';
+			ShowStatusLine(code, true);
+			ui.errShowMs = kErrShowMs;
 		}
 	};
 
@@ -301,13 +351,13 @@ bool service_run(void)
 			if (!g_http_server)
 			{
 				Kernel.log("service: http server alloc failed");
-				if (!shownHttpFail)
+				if (!ui.shownHttpFail)
 				{
-					ServiceDrawReadyScreen("IP: (http fail)");
-					shownHttpFail = true;
-					shownReady = false;
-					shownJoining = false;
-					shownIp[0] = '\0';
+					ServiceDrawReadyScreen(kHttpFailLine);
+					ui.shownHttpFail = true;
+					ui.shownReady = false;
+					ui.shownJoining = false;
+					ui.shownIp[0] = '\0';
 				}
 				Kernel.get_scheduler()->MsSleep(kNetPollMs);
 				continue;
@@ -316,8 +366,8 @@ bool service_run(void)
 
 		if (!linkUp || !ipReady)
 		{
-			const bool inErrFlash = errShowMs != 0;
-			const bool inBackoff = shownRetry && retryBannerMs != 0;
+			const bool inErrFlash = ui.errShowMs != 0;
+			const bool inBackoff = ui.shownRetry && ui.retryBannerMs != 0;
 
 			// Only measure/judge association/DHCP while we are actively "joining".
 			// During error flash/backoff we keep the UI stable and wait.
@@ -325,20 +375,20 @@ bool service_run(void)
 			{
 				if (!linkUp)
 				{
-					assocWaitMs += kNetPollMs;
-					dhcpWaitMs = 0;
-					if (assocWaitMs >= kAssocFailMs)
+					ui.assocWaitMs += kNetPollMs;
+					ui.dhcpWaitMs = 0;
+					if (ui.assocWaitMs >= kAssocFailMs)
 					{
 						SetNetErr("WIFI_ASSOC_FAIL", "stage=assoc");
 					}
 				}
 				else if (!ipReady)
 				{
-					assocWaitMs = 0;
+					ui.assocWaitMs = 0;
 					if (useDhcp)
 					{
-						dhcpWaitMs += kNetPollMs;
-						if (dhcpWaitMs >= kDhcpFailMs)
+						ui.dhcpWaitMs += kNetPollMs;
+						if (ui.dhcpWaitMs >= kDhcpFailMs)
 						{
 							SetNetErr("DHCP_TIMEOUT", "stage=dhcp");
 						}
@@ -346,98 +396,76 @@ bool service_run(void)
 				}
 			}
 
-			if (errShowMs)
+			if (ui.errShowMs)
 			{
-				if (errShowMs <= kNetPollMs)
+				if (ui.errShowMs <= kNetPollMs)
 				{
-					errShowMs = 0;
+					ui.errShowMs = 0;
 				}
 				else
 				{
-					errShowMs -= kNetPollMs;
+					ui.errShowMs -= kNetPollMs;
 				}
 			}
-			else if (shownRetry && retryBannerMs)
+			else if (ui.shownRetry && ui.retryBannerMs)
 			{
-				if (retryBannerMs <= kNetPollMs)
+				if (ui.retryBannerMs <= kNetPollMs)
 				{
-					retryBannerMs = 0;
-					shownRetry = false;
-					lastNetErr[0] = '\0';
-					assocWaitMs = 0;
-					dhcpWaitMs = 0;
+					ui.retryBannerMs = 0;
+					ui.shownRetry = false;
+					ui.lastNetErr[0] = '\0';
+					ResetNetWaitTimers();
 				}
 				else
 				{
-					retryBannerMs -= kNetPollMs;
+					ui.retryBannerMs -= kNetPollMs;
 				}
 			}
-			else if (!shownJoining)
+			else if (!ui.shownJoining)
 			{
-				if (!g_http_server && lastNetErr[0] && !shownRetry)
+				if (!g_http_server && ui.lastNetErr[0] && !ui.shownRetry)
 				{
 					++g_net_attempt;
 					++retryCount;
-					if (allowStatusLog)
-					{
-						ServiceNetStatusWrite("WIFI_RETRY", "stage=timer");
-					}
+					LogNetEvent("WIFI_RETRY", "stage=timer");
 					if (allowStatusLog && retryCount > kMaxLoggedRetries)
 					{
 						ServiceNetStatusWrite("LOG_SUPPRESSED", "max_retries=30");
 						allowStatusLog = false;
 					}
 
-					char retryLine[32];
-					const unsigned retrySeconds = (kNetRetryMs + 999) / 1000;
-					snprintf(retryLine, sizeof(retryLine), "ERR: RETRY %uS", retrySeconds);
-					ServiceBlinkScreen();
-					ServiceDrawReadyScreen(retryLine);
-					shownRetry = true;
-					retryBannerMs = kNetRetryMs;
-					shownJoining = false;
-					shownReady = false;
-					shownHttpFail = false;
-					shownIp[0] = '\0';
-					assocWaitMs = 0;
-					dhcpWaitMs = 0;
+					EnterBackoff();
 				}
-				else if (!shownRetry || retryBannerMs == 0)
+				else if (!ui.shownRetry || ui.retryBannerMs == 0)
 				{
-					ServiceDrawReadyScreen("IP: (joining)");
-					shownJoining = true;
-					shownReady = false;
-					shownIp[0] = '\0';
+					EnterJoining();
 				}
 			}
 		}
 		else
 		{
-			assocWaitMs = 0;
-			dhcpWaitMs = 0;
+			ResetNetWaitTimers();
 
-			shownHttpFail = false;
-			shownRetry = false;
+			ui.shownHttpFail = false;
+			ui.shownRetry = false;
 
 			CString ip;
 			net->GetConfig()->GetIPAddress()->Format(&ip);
 			const char *ipText = (const char *) ip;
-			if (!shownReady || strcmp(shownIp, ipText) != 0)
+			if (!ui.shownReady || strcmp(ui.shownIp, ipText) != 0)
 			{
 				char ipLine[40];
 				const bool usePrefix = strlen(ipText) <= 12;
 				snprintf(ipLine, sizeof(ipLine), usePrefix ? "IP: %s" : "%s", ipText);
 				ServiceDrawReadyScreen(ipLine);
-				strncpy(shownIp, ipText, sizeof(shownIp) - 1);
-				shownIp[sizeof(shownIp) - 1] = '\0';
-				shownReady = true;
-				shownJoining = false;
+				strncpy(ui.shownIp, ipText, sizeof(ui.shownIp) - 1);
+				ui.shownIp[sizeof(ui.shownIp) - 1] = '\0';
+				ui.shownReady = true;
+				ui.shownJoining = false;
 			}
 		}
-
-		Kernel.get_scheduler()->Yield();
 		Kernel.get_scheduler()->MsSleep(kNetPollMs);
-	}
+		}
 
 	return false;
 }
