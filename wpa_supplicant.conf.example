@@ -1,38 +1,19 @@
-# wpa_supplicant.conf.example
-#
-# To be used as SD:/wpa_supplicant.conf after editing values.
-# If WiFi login/join fails, check /wpa_net_status_log.txt for details.
-#
+# If WiFi login/join fails, check /wpa_net_status_log.txt
+
 # Country code: 2-letter ISO code (DK, DE, US, etc.)
-
-country=DK
-
-
-# Keep 0 unless you explicitly need wpa_cli to rewrite the file.
-
-update_config=0
-
+country=XX
 
 network={
-    # Use quotes for normal SSID (Wi-Fi name)
-
+    # Use quotes for SSID.
     ssid="REPLACE_WITH_WIFI_NAME"
 
+    # Use plain password in quotes OR PSK (hex) without quotes.
+    psk="REPLACE_WITH_WIFI_PASSWORD_OR_PSK"
 
-    # Password
-    # - Plain password in quotes
-    # - PSK value without quotes
-
-    psk="REPLACE_WITH_WIFI_PASSWORD"
-
-
-    # Keep proto and key_mgmt settings.
-    # Only WPA2 is currently supported.
-
+    # Keep proto and key_mgmt. Only WPA2 is supported.
     proto=WPA2
     key_mgmt=WPA-PSK
 
-
-    # Uncomment for hidden SSID networks.
+    # Uncomment for hidden SSID.
     # scan_ssid=1
 }
