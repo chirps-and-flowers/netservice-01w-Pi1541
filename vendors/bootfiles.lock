@@ -1,0 +1,15 @@
+# Pi Zero W (01W) boot firmware lock.
+#
+# Source is pinned to an immutable upstream firmware tag + commit.
+
+source_url=https://github.com/raspberrypi/firmware
+source_ref=refs/tags/1.20250915
+source_commit=676efed1194de38975889a34276091da1f5aadd3
+source_archive_url=https://api.github.com/repos/raspberrypi/firmware/tarball/1.20250915
+
+# Format:
+#   file <path> <sha256> <bytes>
+file bootcode.bin 4948532b1c5b60935388301715154ad8d3ed394727568d830ea883468a3f5ef9 52624
+file start.elf 14d54df30f437e2120dd99f81ae0427ad033a7ed258e20b366a5ffcff5633e35 3023264
+file fixup.dat bf23063135feaba121b2a8340cc1d25425d921551c8cb3446efd21f3aa50f396 7365
+file bcm2708-rpi-zero-w.dtb 8b0ea0bab6961dddb25ddf69ef16f8a0dcc5d4f8fc3c7c8edd343cd99be7817f 31829

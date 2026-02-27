@@ -1,0 +1,14 @@
+# Pi Zero W (01W) WLAN firmware lock (service kernel).
+#
+# Source follows Circle's wlan firmware pin:
+#   libs/circle/addon/wlan/firmware/Makefile
+
+source_url=https://github.com/RPi-Distro/firmware-nonfree
+source_ref=c9d3ae6584ab79d19a4f94ccf701e888f9f87a53
+source_base_url=https://github.com/RPi-Distro/firmware-nonfree/raw/c9d3ae6584ab79d19a4f94ccf701e888f9f87a53/debian/config/brcm80211
+
+# Format:
+#   file <dest_name> <source_relpath> <sha256> <bytes>
+file brcmfmac43430-sdio.bin cypress/cyfmac43430-sdio.bin 0717f8e798f3962230e76e9d840385ba127a38d31d6a55acd5c97cf53e4acc9d 399344
+file brcmfmac43430-sdio.txt brcm/brcmfmac43430-sdio.txt fc3949a4c32f07c18308e7e145c7615be314158e7d714a80e04e4791f16495f9 1121
+file brcmfmac43430-sdio.clm_blob cypress/cyfmac43430-sdio.clm_blob 3376b9c9b32d16bf762e21c7fafb665365070ae240d092498d0d1987c22022aa 4733

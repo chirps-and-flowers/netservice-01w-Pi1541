@@ -1,0 +1,13 @@
+# Pi1541 runtime ROM/data lock (not stored in git as binaries).
+#
+# This lock intentionally contains only required filenames + integrity data.
+# build-sd-root.sh validates local ROM files against this lock.
+
+# Format:
+#   file <dest_name> <sha256> <bytes>
+file chargen fd0d53b8480e86163ac98998976c72cc58d5dd8eb824ed7b829774e74213b420 4096
+file d1541II 326c289c38753323d7e8167897447cf61ef35189d82eb8d75210ece949adda7c 16384
+file dos1541 d1d45afb46fd4e2b48d93ca367b889d75654a3b7acf73044e51f6d880c09369e 16384
+file dos1541ii 326c289c38753323d7e8167897447cf61ef35189d82eb8d75210ece949adda7c 16384
+file dos1581 8f689277f36be357f5f105e6e606c35c42e73c581cdeec14b58f31850dfbcfcb 32768
+file 1581-rom.318045-02.bin 8f689277f36be357f5f105e6e606c35c42e73c581cdeec14b58f31850dfbcfcb 32768
