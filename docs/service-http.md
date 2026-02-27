@@ -113,7 +113,7 @@ GET /modified/download/<i>                 (CServiceHttpServer::GetContent)
 
 ## Transport
 
-- TCP port: `15410` (dev default; may change later)
+- TCP port: `80` by default (`ServiceHttpPort` in `options.txt` can override)
 - JSON: `application/json`
 - Downloads: `application/octet-stream`
 

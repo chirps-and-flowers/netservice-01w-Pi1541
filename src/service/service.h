@@ -17,4 +17,7 @@ bool service_run(void);
 // Access the parsed options.txt for service-only helpers.
 const Options *service_options(void);
 
+// Service HTTP port from options (validated; falls back to default).
+unsigned service_http_port(void);
+
 #endif

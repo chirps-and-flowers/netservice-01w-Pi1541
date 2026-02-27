@@ -111,6 +111,8 @@ netEthernet = 0
 // NOTE: service kernel currently supports WiFi only (no Ethernet).
 // NOTE: service kernel supports static IPv4 when DHCP is disabled (useDHCP=0).
 useDHCP = 1
+// Service HTTP port (default 80).
+ServiceHttpPort = 80
 
 // Static IPv4 (only used when useDHCP=0).
 // NOTE: Option key is "IPAdress" (compat spelling).

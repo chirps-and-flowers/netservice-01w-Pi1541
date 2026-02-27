@@ -1151,7 +1151,7 @@ THTTPStatus CServiceHttpServer::HandleUpload(u8 *pBuffer, unsigned *pLength, boo
 }
 
 CServiceHttpServer::CServiceHttpServer(CNetSubSystem *pNetSubSystem, CSocket *pSocket)
-	: CHTTPDaemon(pNetSubSystem, pSocket, kMaxContentSize, kServiceHttpPort, 0),
+	: CHTTPDaemon(pNetSubSystem, pSocket, kMaxContentSize, service_http_port(), 0),
 	  m_pNetSubSystem(pNetSubSystem)
 {
 	if (g_nonce == 0)
@@ -1230,7 +1230,7 @@ THTTPStatus CServiceHttpServer::GetContent(const char *pPath,
 		snprintf(response, sizeof(response),
 			 "{\"state\":\"READY\",\"nonce\":%u,\"tcp_port\":%u,\"caps\":[],\"modified_count\":%u,\"modified_id\":%u}",
 			 static_cast<unsigned>(g_nonce),
-			 static_cast<unsigned>(kServiceHttpPort),
+			 service_http_port(),
 			 modified_count,
 			 static_cast<unsigned>(modified_id));
 		return WriteJsonResult(pBuffer, pLength, response);

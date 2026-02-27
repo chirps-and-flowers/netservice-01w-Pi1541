@@ -23,6 +23,7 @@ unsigned char *CBMFont = nullptr;
 static ScreenLCD *g_screenLCD = nullptr;
 static CServiceHttpServer *g_http_server = nullptr;
 static Options g_options;
+static constexpr unsigned kServiceHttpPortDefault = 80;
 
 static const char kNetStatusPath[] = "SD:/wpa_net_status_log.txt";
 static unsigned g_net_attempt = 0;
@@ -76,7 +77,7 @@ static void ServiceDrawReadyScreen(const char *ip_line)
 	//   IP: ...
 	//   PORT: <port>   (only if the LCD has room for 3 rows at this font height)
 	char portLine[32];
-	snprintf(portLine, sizeof(portLine), "PORT: %u", static_cast<unsigned>(kServiceHttpPort));
+	snprintf(portLine, sizeof(portLine), "PORT: %u", service_http_port());
 
 	g_screenLCD->Clear(bk);
 	g_screenLCD->PrintText(false, 0, 0 * fh, (char *) "MINI SERVICE", 0, bk);
@@ -211,6 +212,16 @@ void service_init(void)
 const Options *service_options(void)
 {
 	return &g_options;
+}
+
+unsigned service_http_port(void)
+{
+	const unsigned port = g_options.GetServiceHttpPort();
+	if (port == 0 || port > 65535)
+	{
+		return kServiceHttpPortDefault;
+	}
+	return port;
 }
 
 bool service_run(void)

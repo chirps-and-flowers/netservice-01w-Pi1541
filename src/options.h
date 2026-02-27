@@ -126,6 +126,7 @@ public:
 	inline unsigned int GetButtonDown() const { return buttonDown - 1; }
 	inline unsigned int GetButtonBack() const { return buttonBack - 1; }
 	inline unsigned int GetButtonInsert() const { return buttonInsert - 1; }
+	inline unsigned int GetServiceHttpPort() const { return serviceHttpPort; }
 
 	//ROTARY: Added for rotary encoder support - 09/05/2019 by Geo...
 	inline unsigned int RotaryEncoderEnable() const { return rotaryEncoderEnable; }
@@ -217,6 +218,7 @@ private:
         u8 buttonDown;
         u8 buttonBack;
         u8 buttonInsert;
+	unsigned int serviceHttpPort;
 
 	char starFileName[256];
 	char C128BootSectorName[256];
