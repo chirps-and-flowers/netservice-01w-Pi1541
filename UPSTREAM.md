@@ -6,6 +6,8 @@ This repository is a derivative work based on:
   - Tag: `v2.0`
   - Commit: `aead3ad40f73`
 
+Pi1541 version note: pottendo refers to this integrated snapshot as Pi1541 v1.25f (not an upstream tag).
+
 Upstream ancestry and key dependencies are documented in:
 
 - `README.md` (upstream overview and links)
@@ -13,4 +15,3 @@ Upstream ancestry and key dependencies are documented in:
 - `LICENSE` (GPLv3)
 
 If/when we rebase or merge upstream changes, we will update this file with the new pinned tag/commit and note any compatibility breaks.
-

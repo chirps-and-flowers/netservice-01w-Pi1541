@@ -32,7 +32,7 @@ exception.c
 interrupt.h
 interrupt.c
 Timer.h
-Timer.cpp
+Timer.c
 
 R Stange's modified version of John Cronin's EMMC controller
 emmc.h
@@ -54,6 +54,10 @@ https://github.com/FFmpeg/FFmpeg
 xga_font_data.h
 xga_font_data.c
 
+Style64 C64 TrueType fonts (custom license; bootstrapped at build time)
+https://style64.org/c64-truetype
+vendors/style64-font.lock
+
 Pete Rittwage's (Markus Brenner's) NIB lib
 https://c64preservation.com/svn/nibtools/trunk
 gcr.h
@@ -66,10 +70,13 @@ https://c64preservation.com/svn/nibtools/trunk/lz.c
 lz.h
 lz.c
 
+Yann Collet's LZ4 (BSD 2-Clause License)
+https://github.com/lz4/lz4
+vendors/lz4/lz4.h
+vendors/lz4/lz4.c
+
 
 nbla000's CBM-FileBrowser_v1.6
 http://www.nightfallcrew.com/21/08/2013/cbm-filebrowser-v1-6-by-nbla000/
-
-
 
 
