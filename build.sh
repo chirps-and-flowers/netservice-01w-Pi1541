@@ -108,17 +108,32 @@ echo "Toolchain: ${actual_gcc_version}" >&2
 build_service() {
   need lz4
   local stage
+  local stage_build
+  local prefix_map_flags
   stage="$("${ROOT}/tools/bootstrap-circle-stdlib.sh" "--${STAGE_MODE}")"
   [[ -d "$stage" ]] || die "circle-stdlib staging missing: $stage"
 
+  # Use a fixed path alias so upstream Circle/newlib __FILE__ strings are stable
+  # across different checkout locations.
+  stage_build="/tmp/netservice-01w-circle-stdlib"
+  rm -rf "${stage_build}"
+  ln -s "$stage" "$stage_build"
+
+  # Keep service-kernel paths stable in local compilation units, too.
+  prefix_map_flags="-ffile-prefix-map=${ROOT}=. -ffile-prefix-map=${stage_build}=./build/staging/circle-stdlib"
+
   echo "circle-stdlib: applying vendor patches (lockfile pinned)" >&2
-  "${ROOT}/tools/apply-vendor-patches.sh" "$stage" >/dev/null
+  "${ROOT}/tools/apply-vendor-patches.sh" "$stage_build" >/dev/null
 
   echo "circle-stdlib: configure (-r 1, arm-none-eabi-)" >&2
-  ( cd "$stage" && ./configure -r 1 --prefix arm-none-eabi- ) >/dev/null
+  ( cd "$stage_build" && ./configure -r 1 --prefix arm-none-eabi- ) >/dev/null
 
   echo "circle-stdlib: build newlib + circle (this can take a while)" >&2
-  ( cd "$stage" && make -j"$(jobs)" newlib circle ) >/dev/null
+  ( cd "$stage_build" && \
+    CFLAGS="${CFLAGS:-} ${prefix_map_flags}" \
+    CXXFLAGS="${CXXFLAGS:-} ${prefix_map_flags}" \
+    CPPFLAGS="${CPPFLAGS:-} ${prefix_map_flags}" \
+    make -j"$(jobs)" newlib circle ) >/dev/null
 
   # The service kernel uses generated headers from both:
   # - webcontent/miniservice/index.h (UI)
@@ -137,12 +152,12 @@ build_service() {
   service_common_objs="service/service.o service/http_server.o service/shim.o options.o ScreenLCD.o SSD1306.o xga_font_data.o"
 
   echo "service kernel: building (Circle, Pi Zero)" >&2
-  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" \
-    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1" \
+  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage_build" \
+    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1 ${prefix_map_flags}" \
     CIRCLE_OBJS="$service_circle_objs" COMMON_OBJS="$service_common_objs" \
     clean >/dev/null
-  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage" \
-    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1" \
+  make -C "${ROOT}/src" -f Makefile.circle CIRCLEBASE="$stage_build" \
+    XFLAGS="-DNETSERVICE_TARGET_SERVICE=1 ${prefix_map_flags}" \
     CIRCLE_OBJS="$service_circle_objs" COMMON_OBJS="$service_common_objs" \
     -j"$(jobs)" >/dev/null
 

@@ -4,5 +4,5 @@
 toolchain_human=arm-none-eabi-gcc (Arm GNU Toolchain 14.3.Rel1 (Build arm-14.174)) 14.3.1 20250623
 file kernel_pi1541.img 962d98aa0cf96a24abb31fa9e662593a7a48404da821ec584636826509f70b91 452232
 file kernel_chainloader.img c51914727acb1d37bfafcd2a7348691478ba9b7c6aab226fca755fd7543ea5b4 185220
-file kernel_service.img 7b1d262d1c2e861354c44ac4724477cb2e813c0bcd08fb4f79352e7e9707a0d1 999452
-file kernel_service.lz4 51fdadb0608ca75b42748e52344f10f86f6a3ccd8654c140051ff3503c9e5283 679064
+file kernel_service.img 263a275bd67f7cfc6a6cf8d45100941872e604cc44e6cbea7835d22369cc94a3 999172
+file kernel_service.lz4 4e3263110c049fb881f908ecb4fdd26ccb1b92ec8c459a8b3f2fd8091d6b50e5 678974
