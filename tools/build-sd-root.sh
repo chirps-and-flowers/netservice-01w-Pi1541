@@ -47,6 +47,13 @@ Behavior:
 
 Output:
   Prints build/sd-root path on stdout.
+
+Examples:
+  # Release-style SD root (no ROM binaries included)
+  ./tools/build-sd-root.sh --clean --without-roms
+
+  # Full SD root with ROM/data files from external directory
+  ./tools/build-sd-root.sh --clean --with-roms --rom-source=/path/to/roms
 EOF
 }
 
@@ -178,6 +185,9 @@ rm -f "${SD_ROOT}/kernel_srv.img.lz4"
 # Canonical config set.
 cp -f "${ROOT}/config.txt" "${SD_ROOT}/config.txt"
 cp -f "${ROOT}/options.txt" "${SD_ROOT}/options.txt"
+if [[ -f "${ROOT}/options.txt.example" ]]; then
+  cp -f "${ROOT}/options.txt.example" "${SD_ROOT}/options.txt.example"
+fi
 
 if [[ -n "$WPA_SOURCE" ]]; then
   cp -f "$WPA_SOURCE" "${SD_ROOT}/wpa_supplicant.conf"
@@ -205,8 +215,22 @@ if [[ "$INCLUDE_ROMS" -eq 1 ]]; then
 else
   # Public release mode: include required ROM manifest only.
   {
-    echo "Pi1541 ROM files are not included in this package."
-    echo "Place these files in SD root and ensure hashes/sizes match:"
+    echo "This package does not include ROM/data files."
+    echo ""
+    echo "Minimum required for Pi1541 1541 emulation:"
+    echo "- Provide ONE valid 1541 ROM in SD root with one of these names:"
+    echo "  d1541.rom"
+    echo "  dos1541"
+    echo "  d1541II"
+    echo "  Jiffy.bin"
+    echo ""
+    echo "Optional (feature-specific):"
+    echo "- dos1581 (or set ROM1581 in options.txt) for D81/1581 emulation"
+    echo "- chargen for 8-bit OLED/CBM font rendering"
+    echo "- Additional 1541 ROMs (for ROM switching via options/browser)"
+    echo ""
+    echo "For full compatibility with this build, see vendors/pi1541-roms.lock"
+    echo "(format: name sha256 size)."
     echo ""
     echo "Format: <name> <sha256> <bytes>"
     for_each_rom_entry emit_rom_manifest_entry
