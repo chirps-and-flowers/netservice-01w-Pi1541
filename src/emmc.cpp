@@ -854,7 +854,7 @@ void CEMMCDevice::IssueCommandInt(u32 cmd_reg, u32 argument, int timeout)
 		assert((m_block_size & 3) == 0);
 
 		u32 *pData =(u32 *) m_buf;
-		for (unsigned blk = 0; blk < m_blocks_to_transfer; ++blk)
+		for (int blk = 0; blk < m_blocks_to_transfer; ++blk)
 		{
 			TimeoutWait(EMMC_INTERRUPT, wr_irpt | 0x8000, 1, timeout);
 			irpts = read32(EMMC_INTERRUPT);

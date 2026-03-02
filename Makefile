@@ -122,7 +122,7 @@ legacy: $(TARGET)
 
 chainloader: version $(OBJS_CHAINLOADER)
 	@echo "  LINK $(CHAINLOADER_TARGET)"
-	$(Q)$(CC) $(CFLAGS) -DPI1541_CHAINBOOT_HELPER=1 -o $(CHAINLOADER_TARGET).elf -Xlinker -Map=$(CHAINLOADER_TARGET).map -T linker-helper.ld -nostartfiles $(OBJS_CHAINLOADER)
+	$(Q)$(CC) $(CFLAGS) -Wl,--no-warn-rwx-segments -DPI1541_CHAINBOOT_HELPER=1 -o $(CHAINLOADER_TARGET).elf -Xlinker -Map=$(CHAINLOADER_TARGET).map -T linker-helper.ld -nostartfiles $(OBJS_CHAINLOADER)
 	$(Q)$(PREFIX)objdump -d $(CHAINLOADER_TARGET).elf | $(PREFIX)c++filt > $(CHAINLOADER_TARGET).lst
 	$(Q)$(PREFIX)objcopy $(CHAINLOADER_TARGET).elf -O binary $(CHAINLOADER_TARGET).img
 
@@ -142,7 +142,7 @@ $(TARGET_CIRCLE): version
 
 $(TARGET): version $(OBJS_LEGACY) $(LIBS)
 	@echo "  LINK $@"
-	$(Q)$(CC) $(CFLAGS) -o $(TARGET).elf -Xlinker -Map=$(TARGET).map -T linker.ld -nostartfiles $(OBJS_LEGACY) $(LIBS)
+	$(Q)$(CC) $(CFLAGS) -Wl,--no-warn-rwx-segments -o $(TARGET).elf -Xlinker -Map=$(TARGET).map -T linker.ld -nostartfiles $(OBJS_LEGACY) $(LIBS)
 	$(Q)$(PREFIX)objdump -d $(TARGET).elf | $(PREFIX)c++filt > $(TARGET).lst
 	$(Q)$(PREFIX)objcopy $(TARGET).elf -O binary $(TARGET).img
 
