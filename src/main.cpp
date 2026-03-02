@@ -475,7 +475,6 @@ void InitialiseLCD()
 			screenLCD->PrintText(false, (u32) x, (u32) y, tempBuffer, 0x0);
 		}
 		screenLCD->RefreshScreen();
-		if (!options.QuickBoot()) MsDelay(3000);
 	}
 	else
 	{
@@ -2519,9 +2518,6 @@ extern "C"
 		DEBUG_LOG("Sound: %s", (playsound > 0) ? "GPIO" : (playsound == 0) ? "DMA" : "OFF") ;
 		if (playsound > 0)
 			DEBUG_LOG("%d Freq, %dus duration", options.SoundOnGPIOFreq(), options.SoundOnGPIODuration());
-
-		if (!options.QuickBoot() && options.LogoDisplayDelay())
-			IEC_Bus::WaitMicroSeconds(options.LogoDisplayDelay() * 1000000);
 
 #if !defined (__CIRCLE__) && !defined(__PICO2__) && !defined(ESP32)
 		InterruptSystemInitialize();

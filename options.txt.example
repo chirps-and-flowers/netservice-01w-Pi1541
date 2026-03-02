@@ -1,0 +1,157 @@
+// netservice-01w-Pi1541 options.txt.example
+// Pi Zero W (01W) netservice variant
+//
+// Full template (all options + explanations).
+// Copy any lines you need into options.txt.
+
+
+
+// --- Hardware ----------------------------------------------------------------
+
+// splitIECLines:
+// - 0 = Option A baseline (default)
+// - 1 = Option B (split IEC lines)
+splitIECLines = 0
+
+// If you are using a LCD screen then specify it here
+LCDName = ssd1306_128x64
+//LCDName = ssd1306_128x32
+//LCDName = sh1106_128x64
+//LCDName = sh1107_128x128
+
+// I2C bus selection:
+// - splitIECLines=1: OLED typically on I2C-1 (pins 3/5) -> i2cBusMaster=1
+// - splitIECLines=0: OLED typically on I2C-0 (pins 27/28) -> i2cBusMaster=0
+i2cBusMaster = 0
+i2cLcdAddress = 60	// decimal, shifted (60 == 0x78, 61 == 0x7A)
+i2cLcdOnContrast = 127
+i2cScan = 0
+i2cLcdUseCBMChar = 1
+//i2cLcdFlip = 1 // Rotate i2c LCD screen 180 degrees
+
+// Head step sound (optional).
+// For the Pi Zero W (01W) netservice variant:
+// SoundOnGPIO = 1  -> GPIO buzzer (supported)
+// SoundOnGPIO = 0  -> DMA sound (not supported in this variant; avoid)
+// SoundOnGPIO = -1 -> disabled
+SoundOnGPIO = 1
+SoundOnGPIODuration = 1000 // microseconds
+SoundOnGPIOFreq = 150      // Hz
+
+// Rotary encoder (KY-040)
+//
+// Not supported in the Pi Zero W (01W) netservice variant.
+// You can still enable it for experiments, but it may reduce emulation
+// stability.
+//
+//RotaryEncoderEnable = 1
+//RotaryEncoderInvert = 0
+
+
+
+// --- Emulation ---------------------------------------------------------------
+
+// ROMs
+// By default Pi1541 will search the root of the SD card for a ROM file and use
+// this for ROM1. The first file found with either of the following names will
+// be used; d1541.rom, dos1541, d1541II, Jiffy.bin.
+// You can override the default ROM1 by specifying it here. You can also add
+// multiple ROMs selectable in filebrowser mode only. Button combos assume
+// default button mapping (ENTER=1, UP=2, DOWN=3, BACK=4, INSERT=5).
+// - hold ENTER + UP     -> ROM1
+// - hold ENTER + DOWN   -> ROM2
+// - hold ENTER + BACK   -> ROM3
+// - hold ENTER + INSERT -> ROM4
+// ROM1 = dos1541
+// ROM2 = dos1541ii
+// ROM1581 = 1581-rom.318045-02.bin  // used for D81; default if unset
+
+// 8 bit font file
+ChargenFont = chargen
+
+// Pi Zero W defaults (timing safe for emulation):
+DisableHDMI = 1
+HeadLess = 1
+DisplayTemperature = 0
+DisplayPNGIcons = 0
+displayTracks = 0
+HDMIGraphIEC = 0
+HDMIDisplayIECActivity = 0
+
+// FB64 (CBMFileBrowser) helper.
+// If using CBMFileBrowser then it is best to specify this option. When
+// the computer resets the Pi will always revert back to the root folder
+// ready to load CBMFileBrowser again.
+OnResetChangeToStartingFolder = 1
+
+// If you would ever like to disable browse mode completely you can do so here
+// DisableSD2IECCommands = 1
+
+// AutoMountImage is currently unsupported in this Pi Zero W (01W)
+// netservice variant (ACTIVE.LST boot path wins by design).
+// AutoMountImage = fb.d64  // must exist in SD:/1541/
+LowercaseBrowseModeFilenames = 1
+
+
+
+// --- Workflow ----------------------------------------------------------------
+
+// NoActive: what to do at boot if SD:/1541/_active_mount/ACTIVE.LST
+// is missing/empty.
+// - service = enter MINI SERVICE
+// - browser = enter Pi-side file browser/menu
+NoActive = service
+
+// MountTap/MountHold: what ENTER/EJECT does while mounted (emulating).
+// - browser = leave emulation and return to file browser/menu
+// - service = leave emulation and enter MINI SERVICE (long-press only)
+// - stay    = ignore
+MountTap = browser
+MountHold = service
+
+// ResetExit: what repeated reset does while mounted.
+// - stay    = ignore reset-exit (recommended)
+// - browser = exit to file browser/menu
+ResetExit = stay
+
+// HoldMs: emulation (mounted) mode long-press threshold used for
+// ENTER-hold (service) and DOWN-hold (previous disk).
+HoldMs = 700
+
+
+// Dirty disk snapshots kept for recovery (0 = no history; keep current only).
+// Network service exposes only the current dirty disk set (dirty.lst). Copies
+// are stored in SD:/1541/_temp_dirty_disks/ so you can recover them later
+// if you didn't download them before leaving MINI SERVICE.
+TempSavedSessions = 5
+
+
+// --- Network service ---------------------------------------------------------
+
+// WiFi join (wpa_supplicant) + DHCP while in MINI SERVICE only.
+// - Credentials: SD:/wpa_supplicant.conf
+// - If WiFi login/join fails, check SD:/wpa_net_status_log.txt for details
+// - WLAN firmware: SD:/firmware/
+netWifi = 1
+
+// Reserved/not implemented in the Pi Zero W (01W) netservice variant.
+// Service networking is WLAN-only; keep at 0.
+netEthernet = 0
+
+// NOTE: service kernel currently supports WiFi only (no Ethernet).
+// NOTE: service kernel supports static IPv4 when DHCP is disabled (useDHCP=0).
+useDHCP = 1
+
+// Service HTTP port (default 80).
+ServiceHttpPort = 80
+
+// Static IPv4 (only used when useDHCP=0).
+// NOTE: Option key is "IPAdress" (compat spelling).
+// Uncomment and set values for your own LAN:
+//IPAdress = 192.168.1.31
+//NetMask = 255.255.255.0
+//DefaultGateway = 192.168.1.1
+//DNSServer = 192.168.1.1
+
+// TZ (hours from UTC) for service logs/time display if used.
+TZ = 0.0
