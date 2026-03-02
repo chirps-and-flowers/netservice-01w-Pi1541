@@ -5,62 +5,11 @@ set -euo pipefail
 # Cached, lockfile-verified fetch of pinned Raspberry Pi boot firmware files.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+. "${ROOT}/tools/lib-bootstrap.sh"
 LOCK_FILE="${ROOT}/vendors/bootfiles.lock"
 CACHE_DIR="${ROOT}/build/cache/bootfiles"
 DOWNLOAD_DIR="${CACHE_DIR}/downloads"
 STAGING_DIR="${CACHE_DIR}/staging"
-
-die() { echo "ERROR: $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
-log() { echo "$@" >&2; }
-
-lock_get() {
-  local key="$1"
-  local file="$2"
-  local v
-  v="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2-)"
-  [[ -n "${v:-}" ]] || die "lockfile missing key: ${key} (${file})"
-  printf '%s\n' "$v"
-}
-
-download() {
-  local url="$1"
-  local out="$2"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$out"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$out" "$url"
-  else
-    die "missing downloader: curl or wget"
-  fi
-}
-
-verify_file() {
-  local path="$1"
-  local expect_sha="$2"
-  local expect_size="$3"
-  local actual_sha
-  local actual_size
-
-  if [[ ! -f "$path" ]]; then
-    log "verify failed: missing file: ${path}"
-    return 1
-  fi
-  actual_sha="$(sha256sum "$path" | awk '{print $1}')"
-  if [[ "$actual_sha" != "$expect_sha" ]]; then
-    log "verify failed: sha256 mismatch for ${path}"
-    log "  expected: ${expect_sha}"
-    log "  actual:   ${actual_sha}"
-    return 1
-  fi
-  actual_size="$(stat -c '%s' "$path")"
-  if [[ "$actual_size" != "$expect_size" ]]; then
-    log "verify failed: size mismatch for ${path}"
-    log "  expected: ${expect_size}"
-    log "  actual:   ${actual_size}"
-    return 1
-  fi
-}
 
 for_each_lock_entry() {
   local callback="$1"
@@ -166,6 +115,7 @@ done
 
 [[ -f "$LOCK_FILE" ]] || die "missing lock file: $LOCK_FILE"
 need tar
+need curl
 need sha256sum
 need stat
 
@@ -193,7 +143,13 @@ fi
 if [[ ! -f "$ARCHIVE_PATH" ]]; then
   log "Downloading bootfiles: ${SOURCE_REF} (${SOURCE_COMMIT})"
   log "Source: ${SOURCE_URL}"
-  download "$SOURCE_ARCHIVE_URL" "$ARCHIVE_PATH"
+  tmp_archive="${ARCHIVE_PATH}.tmp.$$"
+  rm -f "$tmp_archive"
+  if ! download "$SOURCE_ARCHIVE_URL" "$tmp_archive"; then
+    rm -f "$tmp_archive"
+    die "failed to download bootfiles archive"
+  fi
+  mv -f "$tmp_archive" "$ARCHIVE_PATH"
 fi
 
 log "Extracting and verifying lock-listed boot files..."

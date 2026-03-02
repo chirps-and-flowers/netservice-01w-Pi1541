@@ -21,13 +21,10 @@ set -euo pipefail
 #     1541/, 1541/_incoming/, 1541/_active_mount/, 1541/_temp_dirty_disks/
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+. "${ROOT}/tools/lib-bootstrap.sh"
 OUT_DIR="${ROOT}/build/out"
 SD_ROOT="${ROOT}/build/sd-root"
 ROM_LOCK="${ROOT}/vendors/pi1541-roms.lock"
-
-need() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: missing command: $1" >&2; exit 1; }; }
-die() { echo "ERROR: $*" >&2; exit 1; }
-log() { echo "$@" >&2; }
 
 usage() {
   cat <<'EOF'
@@ -55,32 +52,6 @@ Examples:
   # Full SD root with ROM/data files from external directory
   ./tools/build-sd-root.sh --clean --with-roms --rom-source=/path/to/roms
 EOF
-}
-
-verify_file() {
-  local path="$1"
-  local expect_sha="$2"
-  local expect_size="$3"
-  local actual_sha
-  local actual_size
-  if [[ ! -f "$path" ]]; then
-    log "verify failed: missing file: ${path}"
-    return 1
-  fi
-  actual_sha="$(sha256sum "$path" | awk '{print $1}')"
-  if [[ "$actual_sha" != "$expect_sha" ]]; then
-    log "verify failed: sha256 mismatch for ${path}"
-    log "  expected: ${expect_sha}"
-    log "  actual:   ${actual_sha}"
-    return 1
-  fi
-  actual_size="$(stat -c '%s' "$path")"
-  if [[ "$actual_size" != "$expect_size" ]]; then
-    log "verify failed: size mismatch for ${path}"
-    log "  expected: ${expect_size}"
-    log "  actual:   ${actual_size}"
-    return 1
-  fi
 }
 
 for_each_rom_entry() {
@@ -226,7 +197,8 @@ else
     echo ""
     echo "Optional (feature-specific):"
     echo "- dos1581 (or set ROM1581 in options.txt) for D81/1581 emulation"
-    echo "- chargen for 8-bit OLED/CBM font rendering"
+    echo "- chargen for 8-bit OLED/CBM font rendering (often shipped as c64.bin)"
+    echo "  (if your file is c64.bin, rename/copy it to chargen)"
     echo "- Additional 1541 ROMs (for ROM switching via options/browser)"
     echo ""
     echo "For full compatibility with this build, see vendors/pi1541-roms.lock"

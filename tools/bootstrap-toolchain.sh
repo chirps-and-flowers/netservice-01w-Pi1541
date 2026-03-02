@@ -2,17 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+. "${ROOT}/tools/lib-bootstrap.sh"
 CACHE_DIR="${ROOT}/build/cache"
 TOOLCHAIN_DIR="${CACHE_DIR}/toolchains"
-
-lock_get() {
-  local key="$1"
-  local file="$2"
-  local v
-  v="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2-)"
-  [ -n "${v:-}" ] || { echo "lockfile missing key: ${key} (${file})" >&2; exit 1; }
-  printf '%s\n' "$v"
-}
 
 # ARM32 toolchain (required for Pi Zero/legacy)
 LOCK_FILE="${ROOT}/vendors/toolchain.lock"
@@ -25,22 +17,6 @@ TOOLCHAIN_BIN="${TOOLCHAIN_DIR}/${TOOLCHAIN_BASE}/bin"
 
 export TOOLCHAIN_VERSION TOOLCHAIN_TARBALL_SHA256 TOOLCHAIN_URL TOOLCHAIN_BIN
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "missing command: $1" >&2; exit 1; }; }
-log() { echo "$@" >&2; }
-
-fetch() {
-  local url="$1"
-  local out="$2"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$out"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$out" "$url"
-  else
-    echo "missing downloader: curl or wget" >&2
-    exit 1
-  fi
-}
-
 install_arm32() {
   mkdir -p "$TOOLCHAIN_DIR"
   local tarball_path="${TOOLCHAIN_DIR}/${TOOLCHAIN_TARBALL}"
@@ -49,8 +25,20 @@ install_arm32() {
     rm -rf "${TOOLCHAIN_DIR:?}/${TOOLCHAIN_BASE}" "${tarball_path}" || true
   fi
   if [ ! -x "${TOOLCHAIN_BIN}/arm-none-eabi-gcc" ]; then
-    log "Downloading ARM32 toolchain ${TOOLCHAIN_VERSION}..."
-    fetch "$TOOLCHAIN_URL" "$tarball_path"
+    if [ ! -f "$tarball_path" ]; then
+      log "Downloading ARM32 toolchain ${TOOLCHAIN_VERSION}..."
+      tmp="${tarball_path}.tmp.$$"
+      rm -f "$tmp"
+      if ! download "$TOOLCHAIN_URL" "$tmp"; then
+        rm -f "$tmp"
+        die "failed to download toolchain archive"
+      fi
+      echo "${TOOLCHAIN_TARBALL_SHA256}  ${tmp}" | sha256sum -c - >/dev/null || {
+        rm -f "$tmp"
+        die "toolchain archive hash mismatch"
+      }
+      mv -f "$tmp" "$tarball_path"
+    fi
     echo "${TOOLCHAIN_TARBALL_SHA256}  ${tarball_path}" | sha256sum -c - >/dev/null
     tar -xf "$tarball_path" -C "$TOOLCHAIN_DIR"
   fi
@@ -71,6 +59,7 @@ done
 
 need sha256sum
 need tar
+need curl
 
 if [ "$ARM32" -eq 1 ]; then
   install_arm32
