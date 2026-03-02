@@ -1,0 +1,15 @@
+# Style64 C64 Pro Mono font (custom license).
+#
+# We intentionally do not vendor the .ttf in git, because the embedded license
+# text discourages direct-download hosting. The build bootstrap fetches the
+# upstream archive and verifies it by sha256/size.
+#
+# Source page: https://style64.org/c64-truetype
+
+source_url=https://style64.org/file/C64_TrueType_v1.2.1-STYLE.zip
+source_sha256=b630ff545df6fed324bd9b6dc7336b7b93e8777668f45cbb3679561f9960ef2d
+source_bytes=119532
+
+ttf_relpath=C64_TrueType_v1.2.1-STYLE/fonts/C64_Pro_Mono-STYLE.ttf
+ttf_sha256=b2b6d4efa0fb7170f273dc0e16e9a54fc5021c247dbd9e235b16adf90bfe00d8
+ttf_bytes=28164

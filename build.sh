@@ -124,6 +124,7 @@ build_service() {
   # - webcontent/miniservice/index.h (UI)
   # - webcontent/C64_Pro_Mono-STYLE.h (font payload)
   # Build both generators for service-only builds.
+  "${ROOT}/tools/bootstrap-style64-font.sh" >/dev/null
   make -C "${ROOT}/src/webcontent" all >/dev/null
   make -C "${ROOT}/src/webcontent/miniservice" all >/dev/null
 

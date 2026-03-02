@@ -28,6 +28,7 @@ make-*.log
 src/webcontent/manage-imgs.h
 src/webcontent/status.h
 src/webcontent/C64_Pro_Mono-STYLE.h
+src/webcontent/C64_Pro_Mono-STYLE.ttf
 src/webcontent/miniservice/converttool
 src/webcontent/miniservice/index.h
 src/webcontent/miniservice/index.html
