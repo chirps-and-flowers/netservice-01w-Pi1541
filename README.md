@@ -42,25 +42,25 @@ Build model:
 - The build is fail-closed: it checks the active `arm-none-eabi-gcc` path and version against `vendors/toolchain.lock`.
 - Default mode reuses local cache/staging (`build/cache`, `build/staging`); clean flags force rebootstrap.
 
-Most common routes:
+Common routes:
 
-First local build (all kernels):
+- Build all kernels:
 ```sh
 ./build.sh
 ```
 
-Release SD root (no ROM binaries, standard WPA template):
+- Build release SD root (no ROM binaries, standard WPA template):
 ```sh
 ./tools/build-sd-root.sh --clean --without-roms
 ```
 - Uses `wpa_supplicant.conf.example` as `wpa_supplicant.conf`.
 - Adds `ROMS_REQUIRED.txt` (required ROM/data names + hashes).
 
-Dev SD root (ROMs + explicit local WPA file):
+- Build dev SD root (ROMs + explicit local WPA file):
 ```sh
 ./tools/build-sd-root.sh --clean --with-roms --rom-source=/path/to/roms --wpa=/path/to/wpa_supplicant.conf
 ```
 
 ## Notes
 - Full pottendo web UI migration is deferred: `docs/pottendo-full-webserver-migration.md`
-- License: `LICENSE`
+- License: GPLv3 (see `LICENSE`).
