@@ -4,12 +4,10 @@ Pi1541 legacy emulation plus a separate Circle "service kernel" for Raspberry Pi
 Zero W (01W) only.
 
 Provenance:
-- Pi1541 emulation core is by Stephen White.
+- Pi1541 v1.25f by Stephen White (inherited via pottendo upstream).
 - Service kernel runs on Circle (bare-metal) by rsta2.
 - This fork started from, and is heavily derived from, pottendo's Pi1541 Circle integration.
   See `CREDITS.md` and `3rdPartyFiles.txt` for links and full attribution.
-
-Pi1541 version note: pottendo refers to this integrated snapshot as Pi1541 v1.25f (not an upstream tag).
 
 Note: this is a forked codebase and still contains inherited, currently dormant/out-of-scope
 code paths. The maintained target here is Pi Zero W (01W) only.
@@ -36,59 +34,32 @@ Pinned upstream base: `UPSTREAM.md`
 - API and on-disk staging model: `docs/service-http.md`
 
 ## Build (Linux)
-Host requirements:
-- `bash`, `git`, `make`, `lz4`
-- `curl`, `tar`, `unzip`
-- GNU userland tools: `sha256sum`, `stat`, `awk`, `cut`, `grep`, `diff`, `mktemp`
 
 Build model:
-- `build.sh` bootstraps pinned dependencies from lockfiles (toolchain + Circle vendor tree).
+- `build.sh` bootstraps lock-pinned dependencies (toolchain + Circle vendor tree).
 - Circle bootstrap is lock-verified: `vendors/circle-stdlib.lock` (superproject commit) + `vendors/circle-stdlib/submodules.lock` (submodule commits).
 - Vendor patching is lock-verified via `vendors/circle-stdlib/patches.lock`.
 - The build is fail-closed: it checks the active `arm-none-eabi-gcc` path and version against `vendors/toolchain.lock`.
-- Default mode reuses cached staging; clean flags force rebootstrap when cache is stale/corrupt.
+- Default mode reuses local cache/staging (`build/cache`, `build/staging`); clean flags force rebootstrap.
 
-Build all (service + emu + chainloader):
+Most common routes:
+
+First local build (all kernels):
 ```sh
 ./build.sh
 ```
 
-Common variants:
-```sh
-./build.sh --service          # service kernel only
-./build.sh --pi1541           # emu + chainloader only
-./build.sh --clean            # clean Circle staging + toolchain cache
-./build.sh --clean-circle     # clean Circle staging only
-./build.sh --clean-toolchain  # clean toolchain cache only
-```
-
-Artifacts:
-- `build/out/kernel_pi1541.img`
-- `build/out/kernel_service.img`
-- `build/out/kernel_service.lz4`
-- `build/out/kernel_chainloader.img`
-
-## SD Root
-Release-style SD root (no ROM binaries, no WiFi credentials):
+Release SD root (no ROM binaries, standard WPA template):
 ```sh
 ./tools/build-sd-root.sh --clean --without-roms
 ```
+- Uses `wpa_supplicant.conf.example` as `wpa_supplicant.conf`.
+- Adds `ROMS_REQUIRED.txt` (required ROM/data names + hashes).
 
-Copy `build/sd-root/*` to the SD boot partition.
-
-Local/dev SD root (include ROM/data during build):
+Dev SD root (ROMs + explicit local WPA file):
 ```sh
-./tools/build-sd-root.sh --clean --with-roms --rom-source=/path/to/roms
+./tools/build-sd-root.sh --clean --with-roms --rom-source=/path/to/roms --wpa=/path/to/wpa_supplicant.conf
 ```
-
-ROM/data guide:
-- `--without-roms`: add ROM/data manually on SD (`ROMS_REQUIRED.txt` lists names + hashes).
-- `--with-roms`: script copies ROM/data from repo root or `--rom-source`.
-
-`wpa_supplicant.conf` guide:
-- By default, `build-sd-root.sh` copies `wpa_supplicant.conf.example` to `wpa_supplicant.conf`.
-- Edit `wpa_supplicant.conf` on SD with your local `country`, `ssid`, `psk`.
-- Keep WiFi credentials local (do not commit real credentials to git).
 
 ## Notes
 - Full pottendo web UI migration is deferred: `docs/pottendo-full-webserver-migration.md`
